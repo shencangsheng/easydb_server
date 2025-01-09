@@ -1,0 +1,11 @@
+[package]
+name = "easy_db"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+datafusion = { version = "44.0.0",  features = ["backtrace"] }
+arrow = "53.3.0"
+arrow-array = "53.3.0"
+tokio = "1.0"
+actix-web = "4"
