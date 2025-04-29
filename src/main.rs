@@ -1,13 +1,17 @@
-mod controller;
+mod handlers;
+mod controllers;
+mod database;
+mod sqlite;
 
 use actix_web::{App, HttpServer, Responder};
-use controller::product_controller;
+use handlers::product_controller;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    sqlite::init_db();
     HttpServer::new(|| {
         App::new()
-            .configure(product_controller::init) // 配置 product 控制器
+            .configure(controllers::init)
     })
         .bind("127.0.0.1:8080")?
         .run()
