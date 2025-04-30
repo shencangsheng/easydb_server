@@ -1,11 +1,13 @@
 use std::collections::HashMap;
+use std::ptr::eq;
 use actix_web::{web, web::Json, HttpResponse, Responder};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use arrow_array::RecordBatch;
 use serde::{Deserialize, Serialize};
-use crate::controllers;
+use crate::{controllers, sqlite};
 use datafusion::common::Result;
+use rusqlite::params;
 use crate::database;
 
 #[derive(Deserialize)]
@@ -28,6 +30,7 @@ struct SelectResult<V> {
 }
 
 #[derive(Deserialize)]
+#[derive(Serialize)]
 struct TableSchema {
     field: String,
     field_type: String,
@@ -39,7 +42,7 @@ struct DDL {
     db: Option<String>,
     table_name: String,
     table_path: String,
-    table_schemas: Option<Vec<TableSchema>>,
+    table_schemas: Vec<TableSchema>,
     auto_schema: bool,
 }
 
@@ -53,11 +56,11 @@ pub fn error_response<E: std::fmt::Debug>(err: E) -> HttpResponse {
 
 async fn dml(body: Json<Query>) -> HttpResponse {
     let sql = &body.sql;
-    let ctx = database::session();
+    let ctx = database::register_listing_table(&body.table_names).await;
     let cols: Vec<RecordBatch> = database::execute(ctx, sql).await;
     let options = FormatOptions::default().with_null("null");
     let schema = cols[0].schema();
-    let mut table = Vec::new();
+    let mut rows = Vec::new();
     let mut header = Vec::new();
     for field in schema.fields() {
         header.push(field.name().to_string());
@@ -78,16 +81,41 @@ async fn dml(body: Json<Query>) -> HttpResponse {
             for (index, formatter) in formatters.iter().enumerate() {
                 cells.insert(header.get(index).unwrap().clone(), formatter.value(row).to_string());
             }
-            table.push(cells);
+            rows.push(cells);
         }
     }
     HttpResponse::Ok().json(HttpResponseResult {
         resp_msg: "".to_string(),
         data: Some(SelectResult {
             header,
-            rows: table,
+            rows,
         }),
         resp_code: 0,
+    })
+}
+
+async fn ddl(body: Json<DDL>) -> HttpResponse {
+    let conn = sqlite::conn();
+    let db = &body.db.as_ref().map(|s| s.as_str()).unwrap_or("default");
+    let table_ref = &body.table_name;
+    let table_name = if body.db.is_none() {
+        table_ref.clone()
+    } else {
+        format!("{}.{}", db, table_ref)
+    };
+    conn.execute(
+        r#"
+        insert into table_schema ( db_ref, table_ref, table_path, schema, table_name )
+        values
+        (?1, ?2, ?3, ?4, ?5)
+        "#,
+        params![db, table_ref, &body.table_path, serde_json::to_string(&body.table_schemas).unwrap(), table_name],
+    ).expect("TODO: panic message");
+
+    HttpResponse::Ok().json(HttpResponseResult::<String> {
+        resp_msg: "".to_string(),
+        resp_code: 0,
+        data: None,
     })
 }
 
@@ -95,5 +123,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/db")
             .route("dml", web::post().to(dml))
+            .route("ddl", web::post().to(ddl))
     );
 }
