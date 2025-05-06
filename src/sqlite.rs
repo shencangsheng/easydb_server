@@ -12,6 +12,7 @@ pub fn init_db() {
                   db_ref TEXT DEFAULT 'default',
                   table_ref            TEXT NOT NULL UNIQUE,
                   table_path           TEXT NOT NULL,
+                  table_comment           TEXT,
                   table_schema TEXT
                   )",
         [],

@@ -1,11 +1,14 @@
+use std::env;
 use arrow_array::RecordBatch;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
 use datafusion::logical_expr::sqlparser::parser::Parser;
 use datafusion::prelude::{CsvReadOptions, SessionContext};
 use datafusion::sql::sqlparser::ast::{Query, SetExpr};
-use rusqlite::{params_from_iter};
-use crate::sqlite;
+use rusqlite::{params, params_from_iter};
+use crate::{sqlite, utils};
+use crate::controllers::TableFieldSchema;
+use crate::utils::get_os;
 
 pub fn session() -> SessionContext {
     SessionContext::new()
@@ -159,4 +162,46 @@ fn extract_table_names_from_expr(expr: &Expr, table_names: &mut Vec<String>) {
         }
         _ => {}
     }
+}
+
+pub fn test() {
+    let dialect = AnsiDialect {};
+
+    let statements = Parser::parse_sql(&dialect, "CREATE TABLE user6 ( id int ) LOCATION 'xxx' COMMENT 'asdsa'").expect("SQL parsing failed");
+
+    for statement in statements {
+        match statement {
+            Statement::CreateTable(query) => {
+                let location = query.hive_formats.unwrap().location.expect("The location must be present.");
+                if !utils::is_relative_path(location.as_str()) {
+                    panic!("Path '{}' is not a relative path", location);
+                }
+                let table_ref = query.name.to_string();
+                let table_schemas: Vec<TableFieldSchema> = query.columns.iter().map(|column| {
+                    TableFieldSchema {
+                        field: column.name.to_string(),
+                        field_type: column.data_type.to_string(),
+                        comment: None,
+                    }
+                }).collect();
+                let table_comment = query.comment.map(|x| x.to_string());
+                let conn = sqlite::conn();
+                conn.execute(
+                    r#"
+                        insert into catalog ( table_ref, table_path, table_schema, table_comment )
+                        values
+                        (?1, ?2, ?3, ?4)
+                        "#,
+                    params![table_ref, location, serde_json::to_string(&table_schemas).unwrap(), table_comment],
+                ).expect("TODO: panic message");
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn get_data_dir() -> String {
+    let data_dir = env::var("DATA_DIR").unwrap_or_else(|e| get_os().default_data_dir().to_string());
+
+    data_dir
 }

@@ -28,10 +28,10 @@ struct QueryResult<V> {
 
 #[derive(Deserialize)]
 #[derive(Serialize)]
-pub struct TableSchema {
-    field: String,
-    field_type: String,
-    comment: String,
+pub struct TableFieldSchema {
+    pub(crate) field: String,
+    pub(crate) field_type: String,
+    pub(crate) comment: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -39,7 +39,7 @@ struct DDL {
     db: Option<String>,
     table_name: String,
     table_path: String,
-    table_schemas: Vec<TableSchema>,
+    table_schemas: Vec<TableFieldSchema>,
     auto_schema: bool,
 }
 
@@ -48,7 +48,7 @@ struct TableCatalog {
     id: i32,
     table_ref: String,
     table_path: String,
-    table_schema: Vec<TableSchema>,
+    table_schema: Vec<TableFieldSchema>,
 }
 
 pub fn error_response<E: std::fmt::Debug>(err: E) -> HttpResponse {
@@ -119,6 +119,7 @@ async fn ddl(body: Json<DDL>) -> HttpResponse {
 }
 
 async fn catalog() -> HttpResponse {
+    database::test();
     let conn = sqlite::conn();
     let mut stmt = conn.prepare("select id, table_ref, table_path, table_schema from catalog").unwrap();
     let catalog_iter = stmt.query_map([], |row| {
