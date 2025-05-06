@@ -1,10 +1,7 @@
-use std::collections::{HashMap};
-use std::sync::Arc;
 use arrow_array::RecordBatch;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
 use datafusion::logical_expr::sqlparser::parser::Parser;
-use datafusion::logical_expr::{TableSource};
 use datafusion::prelude::{CsvReadOptions, SessionContext};
 use datafusion::sql::sqlparser::ast::{Query, SetExpr};
 use rusqlite::{params_from_iter};
@@ -23,7 +20,7 @@ pub async fn register_listing_table(sql: &String) -> SessionContext {
     let table_names = sql_to_table_names(sql);
     let conn = sqlite::conn();
     let placeholders = table_names.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-    let sql = format!("SELECT table_name, table_path FROM table_schema WHERE table_name IN ({})", placeholders);
+    let sql = format!("SELECT table_ref, table_path FROM table_schema WHERE table_ref IN ({})", placeholders);
     let mut stmt = conn.prepare(&sql).unwrap();
     let results = stmt.query_map(params_from_iter(table_names.iter().map(|s| s.as_str())), |row| {
         Ok(TableSchema {

@@ -1,14 +1,10 @@
 use std::collections::HashMap;
-use std::ptr::eq;
-use actix_web::{web, web::Json, HttpResponse, Responder};
+use actix_web::{web, web::Json, HttpResponse};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use arrow_array::RecordBatch;
 use serde::{Deserialize, Serialize};
-use crate::{controllers, sqlite};
-use datafusion::common::Result;
-use datafusion::datasource::listing::{ListingTable, ListingTableConfig};
-use datafusion::logical_expr::sqlparser::parser::Parser;
+use crate::{sqlite};
 use rusqlite::params;
 use crate::database;
 
@@ -97,20 +93,14 @@ async fn dml(body: Json<Query>) -> HttpResponse {
 
 async fn ddl(body: Json<DDL>) -> HttpResponse {
     let conn = sqlite::conn();
-    let db = &body.db.as_ref().map(|s| s.as_str()).unwrap_or("default");
     let table_ref = &body.table_name;
-    let table_name = if body.db.is_none() {
-        table_ref.clone()
-    } else {
-        format!("{}.{}", db, table_ref)
-    };
     conn.execute(
         r#"
-        insert into table_schema ( db_ref, table_ref, table_path, schema, table_name )
+        insert into table_schema ( table_ref, table_path, schema )
         values
-        (?1, ?2, ?3, ?4, ?5)
+        (?1, ?2, ?3)
         "#,
-        params![db, table_ref, &body.table_path, serde_json::to_string(&body.table_schemas).unwrap(), table_name],
+        params![table_ref, &body.table_path, serde_json::to_string(&body.table_schemas).unwrap()],
     ).expect("TODO: panic message");
 
     HttpResponse::Ok().json(HttpResponseResult::<String> {
