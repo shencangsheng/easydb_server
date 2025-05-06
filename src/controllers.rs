@@ -10,7 +10,7 @@ use crate::database;
 
 #[derive(Deserialize)]
 struct Query {
-    sql: String
+    sql: String,
 }
 
 #[derive(Serialize)]
@@ -21,14 +21,14 @@ struct HttpResponseResult<T> {
 }
 
 #[derive(Serialize)]
-struct SelectResult<V> {
+struct QueryResult<V> {
     header: Vec<String>,
     rows: Vec<HashMap<String, V>>,
 }
 
 #[derive(Deserialize)]
 #[derive(Serialize)]
-struct TableSchema {
+pub struct TableSchema {
     field: String,
     field_type: String,
     comment: String,
@@ -41,6 +41,14 @@ struct DDL {
     table_path: String,
     table_schemas: Vec<TableSchema>,
     auto_schema: bool,
+}
+
+#[derive(Serialize)]
+struct TableCatalog {
+    id: i32,
+    table_ref: String,
+    table_path: String,
+    table_schema: Vec<TableSchema>,
 }
 
 pub fn error_response<E: std::fmt::Debug>(err: E) -> HttpResponse {
@@ -83,7 +91,7 @@ async fn dml(body: Json<Query>) -> HttpResponse {
     }
     HttpResponse::Ok().json(HttpResponseResult {
         resp_msg: "".to_string(),
-        data: Some(SelectResult {
+        data: Some(QueryResult {
             header,
             rows,
         }),
@@ -96,7 +104,7 @@ async fn ddl(body: Json<DDL>) -> HttpResponse {
     let table_ref = &body.table_name;
     conn.execute(
         r#"
-        insert into table_schema ( table_ref, table_path, schema )
+        insert into catalog ( table_ref, table_path, table_schema )
         values
         (?1, ?2, ?3)
         "#,
@@ -110,10 +118,35 @@ async fn ddl(body: Json<DDL>) -> HttpResponse {
     })
 }
 
+async fn catalog() -> HttpResponse {
+    let conn = sqlite::conn();
+    let mut stmt = conn.prepare("select id, table_ref, table_path, table_schema from catalog").unwrap();
+    let catalog_iter = stmt.query_map([], |row| {
+        Ok(TableCatalog {
+            id: row.get_unwrap(0),
+            table_ref: row.get_unwrap(1),
+            table_path: row.get_unwrap(2),
+            table_schema: serde_json::from_str(&row.get_unwrap::<usize, String>(3)).unwrap(),
+        })
+    }).unwrap();
+
+    let mut tables = Vec::new();
+    for catalog in catalog_iter {
+        tables.push(catalog.unwrap());
+    }
+
+    HttpResponse::Ok().json(HttpResponseResult::<Vec<TableCatalog>> {
+        resp_msg: "".to_string(),
+        resp_code: 0,
+        data: Option::from(tables),
+    })
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/db")
             .route("dml", web::post().to(dml))
             .route("ddl", web::post().to(ddl))
+            .route("catalog", web::get().to(catalog))
     );
 }

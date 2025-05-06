@@ -7,13 +7,13 @@ pub fn conn() -> Connection {
 pub fn init_db() {
     let conn = conn();
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS table_schema (
+        "CREATE TABLE IF NOT EXISTS catalog (
                   id              INTEGER PRIMARY KEY,
                   db_ref TEXT DEFAULT 'default',
                   table_ref            TEXT NOT NULL UNIQUE,
                   table_path           TEXT NOT NULL,
-                  schema TEXT
+                  table_schema TEXT
                   )",
         [],
-    ).expect("Failed to create table_schema");
+    ).expect("Failed to create catalog");
 }

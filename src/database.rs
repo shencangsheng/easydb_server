@@ -20,7 +20,7 @@ pub async fn register_listing_table(sql: &String) -> SessionContext {
     let table_names = sql_to_table_names(sql);
     let conn = sqlite::conn();
     let placeholders = table_names.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-    let sql = format!("SELECT table_ref, table_path FROM table_schema WHERE table_ref IN ({})", placeholders);
+    let sql = format!("SELECT table_ref, table_path FROM catalog WHERE table_ref IN ({})", placeholders);
     let mut stmt = conn.prepare(&sql).unwrap();
     let results = stmt.query_map(params_from_iter(table_names.iter().map(|s| s.as_str())), |row| {
         Ok(TableSchema {
