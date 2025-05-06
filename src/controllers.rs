@@ -3,8 +3,11 @@ use actix_web::{web, web::Json, HttpResponse};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use arrow_array::RecordBatch;
+use datafusion::logical_expr::sqlparser::ast::Statement;
+use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
+use datafusion::logical_expr::sqlparser::parser::Parser;
 use serde::{Deserialize, Serialize};
-use crate::{sqlite};
+use crate::{sqlite, utils};
 use rusqlite::params;
 use crate::database;
 
@@ -99,17 +102,38 @@ async fn dml(body: Json<Query>) -> HttpResponse {
     })
 }
 
-async fn ddl(body: Json<DDL>) -> HttpResponse {
-    let conn = sqlite::conn();
-    let table_ref = &body.table_name;
-    conn.execute(
-        r#"
-        insert into catalog ( table_ref, table_path, table_schema )
-        values
-        (?1, ?2, ?3)
-        "#,
-        params![table_ref, &body.table_path, serde_json::to_string(&body.table_schemas).unwrap()],
-    ).expect("TODO: panic message");
+async fn ddl(body: Json<Query>) -> HttpResponse {
+    let dialect = AnsiDialect {};
+    let statements = Parser::parse_sql(&dialect, &body.sql).expect("SQL parsing failed");
+    for statement in statements {
+        match statement {
+            Statement::CreateTable(query) => {
+                let location = query.hive_formats.unwrap().location.expect("The location must be present.");
+                if !utils::is_relative_path(location.as_str()) {
+                    panic!("Path '{}' is not a relative path", location);
+                }
+                let table_ref = query.name.to_string();
+                let table_schemas: Vec<TableFieldSchema> = query.columns.iter().map(|column| {
+                    TableFieldSchema {
+                        field: column.name.to_string(),
+                        field_type: column.data_type.to_string(),
+                        comment: None,
+                    }
+                }).collect();
+                let table_comment = query.comment.map(|x| x.to_string());
+                let conn = sqlite::conn();
+                conn.execute(
+                    r#"
+                        insert into catalog ( table_ref, table_path, table_schema, table_comment )
+                        values
+                        (?1, ?2, ?3, ?4)
+                        "#,
+                    params![table_ref, location, serde_json::to_string(&table_schemas).unwrap(), table_comment],
+                ).expect("TODO: panic message");
+            }
+            _ => {}
+        }
+    }
 
     HttpResponse::Ok().json(HttpResponseResult::<String> {
         resp_msg: "".to_string(),
@@ -119,7 +143,6 @@ async fn ddl(body: Json<DDL>) -> HttpResponse {
 }
 
 async fn catalog() -> HttpResponse {
-    database::test();
     let conn = sqlite::conn();
     let mut stmt = conn.prepare("select id, table_ref, table_path, table_schema from catalog").unwrap();
     let catalog_iter = stmt.query_map([], |row| {
