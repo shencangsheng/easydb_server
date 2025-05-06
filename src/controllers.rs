@@ -7,13 +7,14 @@ use arrow_array::RecordBatch;
 use serde::{Deserialize, Serialize};
 use crate::{controllers, sqlite};
 use datafusion::common::Result;
+use datafusion::datasource::listing::{ListingTable, ListingTableConfig};
+use datafusion::logical_expr::sqlparser::parser::Parser;
 use rusqlite::params;
 use crate::database;
 
 #[derive(Deserialize)]
 struct Query {
-    sql: String,
-    table_names: Vec<String>,
+    sql: String
 }
 
 #[derive(Serialize)]
@@ -56,7 +57,7 @@ pub fn error_response<E: std::fmt::Debug>(err: E) -> HttpResponse {
 
 async fn dml(body: Json<Query>) -> HttpResponse {
     let sql = &body.sql;
-    let ctx = database::register_listing_table(&body.table_names).await;
+    let ctx = database::register_listing_table(&sql).await;
     let cols: Vec<RecordBatch> = database::execute(ctx, sql).await;
     let options = FormatOptions::default().with_null("null");
     let schema = cols[0].schema();
