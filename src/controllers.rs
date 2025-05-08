@@ -1,8 +1,14 @@
 use std::collections::HashMap;
-use actix_web::{web, web::Json, HttpResponse};
+use std::convert::Infallible;
+use std::error::Error;
+use std::fmt::Display;
+use std::io::Bytes;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use actix_web::{get, post, web, web::Json, HttpResponse, Responder, Result};
+use actix_web::body::{BodySize, MessageBody};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
-use arrow_array::RecordBatch;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
 use datafusion::logical_expr::sqlparser::parser::Parser;
@@ -10,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::{sqlite, utils};
 use rusqlite::params;
 use crate::database;
+use crate::database::DBError;
 
 #[derive(Deserialize)]
 struct Query {
@@ -17,10 +24,16 @@ struct Query {
 }
 
 #[derive(Serialize)]
-struct HttpResponseResult<T> {
-    resp_msg: String,
-    data: Option<T>,
-    resp_code: i32,
+pub struct HttpResponseResult<T> {
+    pub(crate) resp_msg: String,
+    pub(crate) data: Option<T>,
+    pub(crate) resp_code: i32,
+}
+
+impl<T: Serialize + std::fmt::Debug> Display for HttpResponseResult<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("data: {:?}, resp_msg: {}, resp_code: {}", self.data, self.resp_msg, self.resp_code))
+    }
 }
 
 #[derive(Serialize)]
@@ -62,10 +75,20 @@ pub fn error_response<E: std::fmt::Debug>(err: E) -> HttpResponse {
     })
 }
 
-async fn dml(body: Json<Query>) -> HttpResponse {
+pub fn error_message_response<E: std::fmt::Debug>(err_message: &str) -> HttpResponse {
+    HttpResponse::BadRequest().json(HttpResponseResult::<String> {
+        resp_msg: format!("Error: {:?}", err_message),
+        data: None,
+        resp_code: 1,
+    })
+}
+
+#[post("/dml")]
+async fn dml(body: Json<Query>) -> Result<impl Responder> {
     let sql = &body.sql;
-    let ctx = database::register_listing_table(&sql).await;
-    let cols: Vec<RecordBatch> = database::execute(ctx, sql).await;
+    let ctx = database::register_listing_table(&sql).await?;
+    let cols = database::execute(ctx, sql).await?;
+
     let options = FormatOptions::default().with_null("null");
     let schema = cols[0].schema();
     let mut rows = Vec::new();
@@ -81,7 +104,7 @@ async fn dml(body: Json<Query>) -> HttpResponse {
             .collect::<std::result::Result<Vec<_>, ArrowError>>() {
             Ok(f) => f,
             Err(err) => {
-                return error_response(err);
+                return Ok(error_response(err));
             }
         };
         for row in 0..col.num_rows() {
@@ -92,25 +115,25 @@ async fn dml(body: Json<Query>) -> HttpResponse {
             rows.push(cells);
         }
     }
-    HttpResponse::Ok().json(HttpResponseResult {
+    Ok(HttpResponse::Ok().json(HttpResponseResult {
         resp_msg: "".to_string(),
         data: Some(QueryResult {
             header,
             rows,
         }),
         resp_code: 0,
-    })
+    }))
 }
 
-async fn ddl(body: Json<Query>) -> HttpResponse {
-    let dialect = AnsiDialect {};
-    let statements = Parser::parse_sql(&dialect, &body.sql).expect("SQL parsing failed");
+#[post("/ddl")]
+async fn ddl(body: Json<Query>) -> Result<impl Responder, DBError> {
+    let statements = database::parse_sql(&body.sql)?;
     for statement in statements {
         match statement {
             Statement::CreateTable(query) => {
-                let location = query.hive_formats.unwrap().location.expect("The location must be present.");
-                if !utils::is_relative_path(location.as_str()) {
-                    panic!("Path '{}' is not a relative path", location);
+                let location = query.hive_formats.unwrap().location.unwrap();
+                if !utils::is_relative_path(location.as_ref()) {
+                    return Err(DBError::SQLError { message: "The location must be present.".to_string() });
                 }
                 let table_ref = query.name.to_string();
                 let table_schemas: Vec<TableFieldSchema> = query.columns.iter().map(|column| {
@@ -129,20 +152,21 @@ async fn ddl(body: Json<Query>) -> HttpResponse {
                         (?1, ?2, ?3, ?4)
                         "#,
                     params![table_ref, location, serde_json::to_string(&table_schemas).unwrap(), table_comment],
-                ).expect("TODO: panic message");
+                ).unwrap();
             }
             _ => {}
         }
     }
 
-    HttpResponse::Ok().json(HttpResponseResult::<String> {
+    Ok(HttpResponse::Ok().json(HttpResponseResult::<String> {
         resp_msg: "".to_string(),
         resp_code: 0,
         data: None,
-    })
+    }))
 }
 
-async fn catalog() -> HttpResponse {
+#[get("/catalog")]
+async fn catalog() -> Result<impl Responder, DBError> {
     let conn = sqlite::conn();
     let mut stmt = conn.prepare("select id, table_ref, table_path, table_schema from catalog").unwrap();
     let catalog_iter = stmt.query_map([], |row| {
@@ -159,18 +183,18 @@ async fn catalog() -> HttpResponse {
         tables.push(catalog.unwrap());
     }
 
-    HttpResponse::Ok().json(HttpResponseResult::<Vec<TableCatalog>> {
+    Ok(HttpResponse::Ok().json(HttpResponseResult::<Vec<TableCatalog>> {
         resp_msg: "".to_string(),
         resp_code: 0,
         data: Option::from(tables),
-    })
+    }))
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/db")
-            .route("dml", web::post().to(dml))
-            .route("ddl", web::post().to(ddl))
-            .route("catalog", web::get().to(catalog))
+            .service(dml)
+            .service(catalog)
+            .service(ddl)
     );
 }
