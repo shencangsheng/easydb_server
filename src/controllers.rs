@@ -24,7 +24,7 @@ pub struct HttpResponseResult<T> {
 #[derive(Serialize)]
 struct QueryResult<V> {
     header: Option<Vec<String>>,
-    rows: Option<Vec<V>>,
+    rows: Option<Vec<Vec<V>>>,
     sql_type: Option<SqlType>,
 }
 
@@ -97,15 +97,13 @@ async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
                     rows.push(cells);
                 }
             }
-            Ok(HttpResponse::Ok().json(HttpResponseResult {
-                resp_msg: "".to_string(),
-                data: Some(QueryResult {
+            http_response_succeed(
+                Some(QueryResult {
                     header: Some(header),
                     rows: Some(rows),
                     sql_type: Some(DML),
-                }),
-                resp_code: 0,
-            }))
+                }), "",
+            )
         }
         DDL => {
             for statement in statements {
@@ -144,15 +142,13 @@ async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
                     }
                 }
             }
-            Ok(HttpResponse::Ok().json(HttpResponseResult::<QueryResult<String>> {
-                resp_msg: "".to_string(),
-                data: Some(QueryResult {
+            http_response_succeed(
+                Some(QueryResult::<String> {
                     rows: None,
                     header: None,
-                    sql_type: Some(DML),
-                }),
-                resp_code: 0,
-            }))
+                    sql_type: Some(DDL),
+                }), "",
+            )
         }
     };
 }
@@ -175,11 +171,9 @@ async fn catalog() -> Result<impl Responder> {
         tables.push(catalog.unwrap());
     }
 
-    Ok(HttpResponse::Ok().json(HttpResponseResult::<Vec<TableCatalog>> {
-        resp_msg: "".to_string(),
-        resp_code: 0,
-        data: Option::from(tables),
-    }))
+    http_response_succeed(
+        Some(tables), "",
+    )
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {
