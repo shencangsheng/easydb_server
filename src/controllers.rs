@@ -34,7 +34,7 @@ impl<T: Serialize + std::fmt::Debug> Display for HttpResponseResult<T> {
 #[derive(Serialize)]
 struct QueryResult<V> {
     header: Option<Vec<String>>,
-    rows: Option<Vec<HashMap<String, V>>>,
+    rows: Option<Vec<V>>,
     sql_type: Option<SqlType>,
 }
 
@@ -100,9 +100,9 @@ async fn query(body: Json<Query>) -> Result<impl Responder> {
                     }
                 };
                 for row in 0..col.num_rows() {
-                    let mut cells = HashMap::new();
+                    let mut cells = Vec::new();
                     for (index, formatter) in formatters.iter().enumerate() {
-                        cells.insert(header.get(index).unwrap().clone(), formatter.value(row).to_string());
+                        cells.push(formatter.value(row).to_string());
                     }
                     rows.push(cells);
                 }
