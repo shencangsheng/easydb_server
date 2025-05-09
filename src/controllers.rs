@@ -1,10 +1,8 @@
-use std::collections::HashMap;
 use std::fmt::Display;
 use actix_web::{get, post, web, web::Json, Error, HttpResponse, Responder, Result};
 use actix_web::body::{MessageBody};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
-use datafusion::common::cse::FoundCommonNodes::No;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use serde::{Deserialize, Serialize};
 use crate::{sqlite, utils};
