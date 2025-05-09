@@ -1,6 +1,4 @@
-use std::fmt::Display;
 use actix_web::{get, post, web, web::Json, Error, HttpResponse, Responder, Result};
-use actix_web::body::{MessageBody};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use datafusion::logical_expr::sqlparser::ast::Statement;
@@ -21,12 +19,6 @@ pub struct HttpResponseResult<T> {
     pub(crate) resp_msg: String,
     pub(crate) data: Option<T>,
     pub(crate) resp_code: i32,
-}
-
-impl<T: Serialize + std::fmt::Debug> Display for HttpResponseResult<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", format!("{{data: {:?}, resp_msg: {}, resp_code: {}}}", self.data, self.resp_msg, self.resp_code))
-    }
 }
 
 #[derive(Serialize)]
@@ -52,20 +44,12 @@ struct TableCatalog {
     table_schema: Vec<TableFieldSchema>,
 }
 
-pub fn error_response<E: std::fmt::Debug>(err: E) -> HttpResponse {
-    HttpResponse::BadRequest().json(HttpResponseResult::<String> {
-        resp_msg: format!("Error: {:?}", err),
-        data: None,
-        resp_code: 1,
-    })
-}
-
-pub fn error_message_response<E: std::fmt::Debug>(err_message: &str) -> HttpResponse {
-    HttpResponse::BadRequest().json(HttpResponseResult::<String> {
-        resp_msg: format!("Error: {:?}", err_message),
-        data: None,
-        resp_code: 1,
-    })
+pub fn http_response_succeed<V: serde::Serialize>(data: Option<V>, resp_msg: &str) -> Result<HttpResponse> {
+    Ok(HttpResponse::Ok().json(HttpResponseResult {
+        resp_msg: resp_msg.to_string(),
+        data,
+        resp_code: 0,
+    }))
 }
 
 #[post("/query")]
@@ -77,15 +61,13 @@ async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
         DML => {
             let results = database::execute(ctx, sql).await?;
             if results.is_empty() {
-                return Ok(HttpResponse::Ok().json(HttpResponseResult {
-                    resp_msg: "".to_string(),
-                    data: Some(QueryResult::<String> {
+                return http_response_succeed(
+                    Some(QueryResult::<String> {
                         header: Some(Vec::new()),
                         rows: Some(Vec::new()),
                         sql_type: Some(DML),
-                    }),
-                    resp_code: 0,
-                }));
+                    }), "",
+                );
             }
             let options = FormatOptions::default().with_null("null");
             let schema = results[0].schema();
@@ -109,7 +91,7 @@ async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
                 };
                 for row in 0..batch.num_rows() {
                     let mut cells = Vec::new();
-                    for (index, formatter) in formatters.iter().enumerate() {
+                    for (_, formatter) in formatters.iter().enumerate() {
                         cells.push(formatter.value(row).to_string());
                     }
                     rows.push(cells);
@@ -131,10 +113,10 @@ async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
                     Statement::CreateTable(query) => {
                         let location = match query.hive_formats.and_then(|hf| hf.location) {
                             Some(loc) => loc,
-                            None => return Ok(error_response("The location must be present.".to_string())),
+                            None => return Err(DBError::SQLError { message: "The location must be present.".to_string() }.into()),
                         };
                         if !utils::is_relative_path(location.as_ref()) {
-                            return Ok(error_response("The location must be a relative path.".to_string()));
+                            return Err(DBError::SQLError { message: "The location must be a relative path.".to_string() }.into());
                         }
                         let table_ref = query.name.to_string();
                         let table_schemas: Vec<TableFieldSchema> = query.columns.iter().map(|column| {

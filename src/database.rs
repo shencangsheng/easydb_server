@@ -1,6 +1,5 @@
-use std::{env, fmt};
+use std::{env};
 use std::error::Error;
-use std::fmt::{Display};
 use actix_web::{HttpResponse, ResponseError};
 use arrow_array::RecordBatch;
 use datafusion::common::DataFusionError;
@@ -15,7 +14,6 @@ use crate::{sqlite};
 use crate::database::SqlType::{DDL, DML};
 use crate::utils::get_os;
 use derive_more::{Display, Error};
-use rusqlite::fallible_iterator::FallibleIterator;
 use serde::Serialize;
 use crate::controllers::HttpResponseResult;
 
@@ -84,7 +82,6 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, Box<
 }
 
 pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionContext, options: CsvReadOptions<'_>) -> Result<(), DataFusionError> {
-    println!("{}: {}", table_ref, table_path);
     ctx.register_csv(table_ref, format!("{}/{}", get_data_dir(), table_path), options).await?;
 
     Ok(())
@@ -219,14 +216,6 @@ pub fn get_data_dir() -> String {
     data_dir
 }
 
-#[derive(Debug)]
-pub struct UnsupportedSqlError;
-
-impl fmt::Display for UnsupportedSqlError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Only SELECT and CREATE TABLE statements are supported")
-    }
-}
 pub fn determine_sql_type(sql: &String) -> Result<(Vec<Statement>, SqlType), DBError> {
     let statements = parse_sql(sql)?;
     for statement in &statements {

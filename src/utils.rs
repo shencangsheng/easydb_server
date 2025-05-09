@@ -1,6 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
-use once_cell::unsync::Lazy;
 
 #[derive(Debug, PartialEq)]
 pub enum OperatingSystem {
@@ -19,8 +17,6 @@ impl OperatingSystem {
     }
 }
 
-pub static SYSTEM_OS: LazyLock<OperatingSystem> = LazyLock::new(|| get_os());
-
 pub fn get_os() -> OperatingSystem {
     if cfg!(target_os = "windows") {
         OperatingSystem::Windows
@@ -34,6 +30,7 @@ pub fn get_os() -> OperatingSystem {
     }
 }
 
+#[allow(dead_code)]
 pub fn check_path_exists(path_str: &str) {
     let path = Path::new(path_str);
 
@@ -42,11 +39,13 @@ pub fn check_path_exists(path_str: &str) {
     }
 }
 
+#[allow(dead_code)]
 pub fn is_directory(path_str: &str) -> bool {
     let path = Path::new(path_str);
     path.exists() && path.is_dir()
 }
 
+#[allow(dead_code)]
 pub fn join_paths(base_path: &str, relative_path: &str) -> PathBuf {
     let base = Path::new(base_path);
     let full_path = base.join(relative_path);
