@@ -1,14 +1,11 @@
 use std::{env};
-use std::error::Error;
 use actix_web::{HttpResponse, ResponseError};
 use arrow_array::RecordBatch;
-use datafusion::common::DataFusionError;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
 use datafusion::logical_expr::sqlparser::parser::Parser;
 use datafusion::prelude::{CsvReadOptions, SessionContext};
 use datafusion::sql::sqlparser::ast::{Query, SetExpr};
-use datafusion::sql::sqlparser::parser::ParserError;
 use rusqlite::{params_from_iter};
 use crate::{sqlite};
 use crate::database::SqlType::{DDL, DML};
@@ -56,7 +53,7 @@ struct TableSchema {
     table_path: String,
 }
 
-pub async fn register_listing_table(sql: &String) -> Result<SessionContext, Box<dyn Error>> {
+pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBError> {
     let table_names = sql_to_table_names(sql)?;
     let conn = sqlite::conn();
     let placeholders = table_names.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
@@ -75,14 +72,20 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, Box<
             Ok(v) => {
                 register(&v.table_name, &v.table_path, &ctx, CsvReadOptions::new()).await?;
             }
-            _ => {}
+            _ => {
+                return Err(DBError::SQLError {
+                    message: sql.to_string()
+                });
+            }
         }
     }
     Ok(ctx)
 }
 
-pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionContext, options: CsvReadOptions<'_>) -> Result<(), DataFusionError> {
-    ctx.register_csv(table_ref, format!("{}/{}", get_data_dir(), table_path), options).await?;
+pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionContext, options: CsvReadOptions<'_>) -> Result<(), DBError> {
+    ctx.register_csv(table_ref, format!("{}/{}", get_data_dir(), table_path), options).await.map_err(|err| DBError::SQLError {
+        message: err.to_string()
+    })?;
 
     Ok(())
 }
@@ -100,11 +103,8 @@ pub fn parse_sql(sql: &str) -> Result<Vec<Statement>, DBError> {
     Ok(statements)
 }
 
-pub fn sql_to_table_names(sql: &String) -> Result<Vec<String>, ParserError> {
-    let dialect = AnsiDialect {};
-
-    // 解析 SQL 语句
-    let statements = Parser::parse_sql(&dialect, sql)?;
+pub fn sql_to_table_names(sql: &String) -> Result<Vec<String>, DBError> {
+    let statements = parse_sql(sql)?;
 
     // 存储表名的集合
     let mut table_names = Vec::new();
@@ -114,7 +114,9 @@ pub fn sql_to_table_names(sql: &String) -> Result<Vec<String>, ParserError> {
             Statement::Query(query) => {
                 extract_table_names_from_query(&query, &mut table_names);
             }
-            _ => {}
+            _ => {
+                return Err(DBError::SQLError { message: sql.to_string() })
+            }
         }
     }
 
