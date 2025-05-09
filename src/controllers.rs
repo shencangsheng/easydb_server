@@ -77,19 +77,30 @@ async fn query(body: Json<Query>) -> Result<impl Responder> {
     let ctx = database::register_listing_table(&sql).await?;
     return match sql_type {
         DML => {
-            let cols = match database::execute(ctx, sql).await {
+            let results = match database::execute(ctx, sql).await {
                 Ok(c) => c,
                 Err(err) => return Ok(error_response(err)),
             };
+            if results.is_empty() {
+                return Ok(HttpResponse::Ok().json(HttpResponseResult {
+                    resp_msg: "".to_string(),
+                    data: Some(QueryResult::<String> {
+                        header: Some(Vec::new()),
+                        rows: Some(Vec::new()),
+                        sql_type: Some(DML),
+                    }),
+                    resp_code: 0,
+                }));
+            }
             let options = FormatOptions::default().with_null("null");
-            let schema = cols[0].schema();
+            let schema = results[0].schema();
             let mut rows = Vec::new();
             let mut header = Vec::new();
             for field in schema.fields() {
                 header.push(field.name().to_string());
             }
-            for col in cols {
-                let formatters = match col
+            for batch in results {
+                let formatters = match batch
                     .columns()
                     .iter()
                     .map(|c| ArrayFormatter::try_new(c.as_ref(), &options))
@@ -99,7 +110,7 @@ async fn query(body: Json<Query>) -> Result<impl Responder> {
                         return Ok(error_response(err));
                     }
                 };
-                for row in 0..col.num_rows() {
+                for row in 0..batch.num_rows() {
                     let mut cells = Vec::new();
                     for (index, formatter) in formatters.iter().enumerate() {
                         cells.push(formatter.value(row).to_string());
@@ -164,7 +175,7 @@ async fn query(body: Json<Query>) -> Result<impl Responder> {
                 resp_code: 0,
             }))
         }
-    }
+    };
 }
 
 #[get("/catalog")]
