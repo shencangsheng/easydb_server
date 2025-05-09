@@ -1,22 +1,17 @@
 use std::collections::HashMap;
-use std::convert::Infallible;
-use std::error::Error;
 use std::fmt::Display;
-use std::io::Bytes;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 use actix_web::{get, post, web, web::Json, HttpResponse, Responder, Result};
-use actix_web::body::{BodySize, MessageBody};
+use actix_web::body::{MessageBody};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
+use datafusion::common::cse::FoundCommonNodes::No;
 use datafusion::logical_expr::sqlparser::ast::Statement;
-use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
-use datafusion::logical_expr::sqlparser::parser::Parser;
 use serde::{Deserialize, Serialize};
 use crate::{sqlite, utils};
 use rusqlite::params;
 use crate::database;
-use crate::database::DBError;
+use crate::database::{DBError, SqlType};
+use crate::database::SqlType::{DML, DDL};
 
 #[derive(Deserialize)]
 struct Query {
@@ -32,14 +27,15 @@ pub struct HttpResponseResult<T> {
 
 impl<T: Serialize + std::fmt::Debug> Display for HttpResponseResult<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", format!("data: {:?}, resp_msg: {}, resp_code: {}", self.data, self.resp_msg, self.resp_code))
+        write!(f, "{}", format!("{{data: {:?}, resp_msg: {}, resp_code: {}}}", self.data, self.resp_msg, self.resp_code))
     }
 }
 
 #[derive(Serialize)]
 struct QueryResult<V> {
-    header: Vec<String>,
-    rows: Vec<HashMap<String, V>>,
+    header: Option<Vec<String>>,
+    rows: Option<Vec<HashMap<String, V>>>,
+    sql_type: Option<SqlType>,
 }
 
 #[derive(Deserialize)]
@@ -48,15 +44,6 @@ pub struct TableFieldSchema {
     pub(crate) field: String,
     pub(crate) field_type: String,
     pub(crate) comment: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct DDL {
-    db: Option<String>,
-    table_name: String,
-    table_path: String,
-    table_schemas: Vec<TableFieldSchema>,
-    auto_schema: bool,
 }
 
 #[derive(Serialize)]
@@ -83,90 +70,105 @@ pub fn error_message_response<E: std::fmt::Debug>(err_message: &str) -> HttpResp
     })
 }
 
-#[post("/dml")]
-async fn dml(body: Json<Query>) -> Result<impl Responder> {
+#[post("/query")]
+async fn query(body: Json<Query>) -> Result<impl Responder> {
     let sql = &body.sql;
+    let (statements, sql_type) = database::determine_sql_type(sql)?;
     let ctx = database::register_listing_table(&sql).await?;
-    let cols = database::execute(ctx, sql).await?;
-
-    let options = FormatOptions::default().with_null("null");
-    let schema = cols[0].schema();
-    let mut rows = Vec::new();
-    let mut header = Vec::new();
-    for field in schema.fields() {
-        header.push(field.name().to_string());
-    }
-    for col in cols {
-        let formatters = match col
-            .columns()
-            .iter()
-            .map(|c| ArrayFormatter::try_new(c.as_ref(), &options))
-            .collect::<std::result::Result<Vec<_>, ArrowError>>() {
-            Ok(f) => f,
-            Err(err) => {
-                return Ok(error_response(err));
+    return match sql_type {
+        DML => {
+            let cols = match database::execute(ctx, sql).await {
+                Ok(c) => c,
+                Err(err) => return Ok(error_response(err)),
+            };
+            let options = FormatOptions::default().with_null("null");
+            let schema = cols[0].schema();
+            let mut rows = Vec::new();
+            let mut header = Vec::new();
+            for field in schema.fields() {
+                header.push(field.name().to_string());
             }
-        };
-        for row in 0..col.num_rows() {
-            let mut cells = HashMap::new();
-            for (index, formatter) in formatters.iter().enumerate() {
-                cells.insert(header.get(index).unwrap().clone(), formatter.value(row).to_string());
-            }
-            rows.push(cells);
-        }
-    }
-    Ok(HttpResponse::Ok().json(HttpResponseResult {
-        resp_msg: "".to_string(),
-        data: Some(QueryResult {
-            header,
-            rows,
-        }),
-        resp_code: 0,
-    }))
-}
-
-#[post("/ddl")]
-async fn ddl(body: Json<Query>) -> Result<impl Responder, DBError> {
-    let statements = database::parse_sql(&body.sql)?;
-    for statement in statements {
-        match statement {
-            Statement::CreateTable(query) => {
-                let location = query.hive_formats.unwrap().location.unwrap();
-                if !utils::is_relative_path(location.as_ref()) {
-                    return Err(DBError::SQLError { message: "The location must be present.".to_string() });
-                }
-                let table_ref = query.name.to_string();
-                let table_schemas: Vec<TableFieldSchema> = query.columns.iter().map(|column| {
-                    TableFieldSchema {
-                        field: column.name.to_string(),
-                        field_type: column.data_type.to_string(),
-                        comment: None,
+            for col in cols {
+                let formatters = match col
+                    .columns()
+                    .iter()
+                    .map(|c| ArrayFormatter::try_new(c.as_ref(), &options))
+                    .collect::<std::result::Result<Vec<_>, ArrowError>>() {
+                    Ok(f) => f,
+                    Err(err) => {
+                        return Ok(error_response(err));
                     }
-                }).collect();
-                let table_comment = query.comment.map(|x| x.to_string());
-                let conn = sqlite::conn();
-                conn.execute(
-                    r#"
+                };
+                for row in 0..col.num_rows() {
+                    let mut cells = HashMap::new();
+                    for (index, formatter) in formatters.iter().enumerate() {
+                        cells.insert(header.get(index).unwrap().clone(), formatter.value(row).to_string());
+                    }
+                    rows.push(cells);
+                }
+            }
+            Ok(HttpResponse::Ok().json(HttpResponseResult {
+                resp_msg: "".to_string(),
+                data: Some(QueryResult {
+                    header: Some(header),
+                    rows: Some(rows),
+                    sql_type: Some(DML),
+                }),
+                resp_code: 0,
+            }))
+        }
+        DDL => {
+            for statement in statements {
+                match statement {
+                    Statement::CreateTable(query) => {
+                        let location = match query.hive_formats.and_then(|hf| hf.location) {
+                            Some(loc) => loc,
+                            None => return Ok(error_response("The location must be present.".to_string())),
+                        };
+                        if !utils::is_relative_path(location.as_ref()) {
+                            return Ok(error_response("The location must be a relative path.".to_string()));
+                        }
+                        let table_ref = query.name.to_string();
+                        let table_schemas: Vec<TableFieldSchema> = query.columns.iter().map(|column| {
+                            TableFieldSchema {
+                                field: column.name.to_string(),
+                                field_type: column.data_type.to_string(),
+                                comment: None,
+                            }
+                        }).collect();
+                        let table_comment = query.comment.map(|x| x.to_string());
+                        let conn = sqlite::conn();
+                        if let Err(err) = conn.execute(
+                            r#"
                         insert into catalog ( table_ref, table_path, table_schema, table_comment )
                         values
                         (?1, ?2, ?3, ?4)
                         "#,
-                    params![table_ref, location, serde_json::to_string(&table_schemas).unwrap(), table_comment],
-                ).unwrap();
+                            params![table_ref, location, serde_json::to_string(&table_schemas).unwrap(), table_comment],
+                        ) {
+                            return Ok(error_response(err.to_string()));
+                        }
+                    }
+                    _ => {
+                        return Ok(error_response("Unsupported statement.".to_string()));
+                    }
+                }
             }
-            _ => {}
+            Ok(HttpResponse::Ok().json(HttpResponseResult::<QueryResult<String>> {
+                resp_msg: "".to_string(),
+                data: Some(QueryResult {
+                    rows: None,
+                    header: None,
+                    sql_type: Some(DML),
+                }),
+                resp_code: 0,
+            }))
         }
     }
-
-    Ok(HttpResponse::Ok().json(HttpResponseResult::<String> {
-        resp_msg: "".to_string(),
-        resp_code: 0,
-        data: None,
-    }))
 }
 
 #[get("/catalog")]
-async fn catalog() -> Result<impl Responder, DBError> {
+async fn catalog() -> Result<impl Responder> {
     let conn = sqlite::conn();
     let mut stmt = conn.prepare("select id, table_ref, table_path, table_schema from catalog").unwrap();
     let catalog_iter = stmt.query_map([], |row| {
@@ -193,8 +195,7 @@ async fn catalog() -> Result<impl Responder, DBError> {
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/db")
-            .service(dml)
+            .service(query)
             .service(catalog)
-            .service(ddl)
     );
 }

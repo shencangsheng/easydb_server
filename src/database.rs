@@ -1,9 +1,7 @@
-use std::{env, fmt, result};
+use std::{env, fmt};
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::{format, Display};
 use actix_web::{HttpResponse, ResponseError};
-use actix_web::http::header::ContentType;
-use actix_web::http::StatusCode;
 use arrow_array::RecordBatch;
 use datafusion::common::DataFusionError;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
@@ -15,10 +13,10 @@ use datafusion::sql::sqlparser::parser::ParserError;
 use rusqlite::{params_from_iter};
 use crate::{error, sqlite};
 use crate::database::SqlType::{DDL, DML};
-use crate::error::CoreError;
 use crate::utils::get_os;
 use derive_more::{Display, Error};
-use crate::controllers::HttpResponseResult;
+use rusqlite::fallible_iterator::FallibleIterator;
+use serde::Serialize;
 
 #[derive(Debug, Display, Error)]
 pub enum DBError {
@@ -27,21 +25,17 @@ pub enum DBError {
     #[display("SQL syntax error found: {sql}")]
     SQLSyntaxError { sql: String },
 }
+
 impl ResponseError for DBError {
-    fn status_code(&self) -> StatusCode {
-        match *self {
-            DBError::SQLError { message: _ } => StatusCode::BAD_REQUEST,
-            DBError::SQLSyntaxError { sql: _ } => StatusCode::BAD_REQUEST,
-        }
-    }
     fn error_response(&self) -> HttpResponse {
-        HttpResponse::build(self.status_code())
-            .insert_header(ContentType::json())
-            .body(HttpResponseResult::<String>{
-                data: None,
-                resp_msg: format!("{}", self),
-                resp_code: 1
-            }.to_string())
+        match *self {
+            DBError::SQLError { ref message } => {
+                HttpResponse::InternalServerError().body(message.clone())
+            }
+            DBError::SQLSyntaxError { ref sql } => {
+                HttpResponse::BadRequest().body(format!("SQL syntax error: {}", sql))
+            }
+        }
     }
 }
 
@@ -49,6 +43,7 @@ pub fn session() -> SessionContext {
     SessionContext::new()
 }
 
+#[derive(Serialize)]
 pub enum SqlType {
     DDL,
     DML,
@@ -86,7 +81,7 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, Box<
 
 pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionContext, options: CsvReadOptions<'_>) -> Result<(), DataFusionError> {
     println!("{}: {}", table_ref, table_path);
-    ctx.register_csv(table_ref, table_path, options).await?;
+    ctx.register_csv(table_ref, format!("{}/{}", get_data_dir(), table_path), options).await?;
 
     Ok(())
 }
@@ -215,7 +210,7 @@ fn extract_table_names_from_expr(expr: &Expr, table_names: &mut Vec<String>) {
 }
 
 pub fn get_data_dir() -> String {
-    let data_dir = env::var("DATA_DIR").unwrap_or_else(|e| get_os().default_data_dir().to_string());
+    let data_dir = env::var("DATA_DIR").unwrap_or(get_os().default_data_dir().to_string());
 
     data_dir
 }
@@ -228,23 +223,24 @@ impl fmt::Display for UnsupportedSqlError {
         write!(f, "Only SELECT and CREATE TABLE statements are supported")
     }
 }
-pub fn determine_sql_type(sql: &String) -> error::Result<(Vec<Statement>, SqlType), ParserError> {
-    let dialect = AnsiDialect {};
-
-    // 解析 SQL 语句
-    let statements = Parser::parse_sql(&dialect, sql)?;
-
+pub fn determine_sql_type(sql: &String) -> Result<(Vec<Statement>, SqlType), DBError> {
+    let statements = parse_sql(sql)?;
     for statement in &statements {
-        match statement {
+        return match statement {
             Statement::Query(_) => {
-                return Ok((statements, DDL));
+                Ok((statements, DML))
             }
             Statement::CreateTable(_) => {
-                return Ok((statements, DML));
+                Ok((statements, DDL))
             }
-            _ => {}
+            _ => {
+                Err(DBError::SQLSyntaxError {
+                    sql: sql.to_string()
+                })
+            }
         }
     }
-
-    panic!()
+    Err(DBError::SQLSyntaxError {
+        sql: sql.to_string()
+    })
 }
