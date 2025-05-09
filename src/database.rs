@@ -14,11 +14,12 @@ use rusqlite::{params_from_iter};
 use crate::{error, sqlite};
 use crate::database::SqlType::{DDL, DML};
 use crate::utils::get_os;
-use derive_more::{Display, Error};
+use derive_more::{Display, Error, From};
 use rusqlite::fallible_iterator::FallibleIterator;
 use serde::Serialize;
+use crate::controllers::HttpResponseResult;
 
-#[derive(Debug, Display, Error)]
+#[derive(Debug, Display, Error, Clone)]
 pub enum DBError {
     #[display("Some SQL error occurred: {message}")]
     SQLError { message: String },
@@ -28,14 +29,17 @@ pub enum DBError {
 
 impl ResponseError for DBError {
     fn error_response(&self) -> HttpResponse {
-        match *self {
-            DBError::SQLError { ref message } => {
-                HttpResponse::InternalServerError().body(message.clone())
-            }
-            DBError::SQLSyntaxError { ref sql } => {
-                HttpResponse::BadRequest().body(format!("SQL syntax error: {}", sql))
-            }
-        }
+        let error_response = HttpResponseResult::<String> {
+            resp_msg: match *self {
+                DBError::SQLError { ref message } => message.clone(),
+                DBError::SQLSyntaxError { ref sql } => sql.clone(),
+            },
+            data: None,
+            resp_code: 1,
+        };
+
+        HttpResponse::build(self.status_code())
+            .json(error_response)
     }
 }
 
@@ -238,7 +242,7 @@ pub fn determine_sql_type(sql: &String) -> Result<(Vec<Statement>, SqlType), DBE
                     sql: sql.to_string()
                 })
             }
-        }
+        };
     }
     Err(DBError::SQLSyntaxError {
         sql: sql.to_string()

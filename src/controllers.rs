@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use actix_web::{get, post, web, web::Json, HttpResponse, Responder, Result};
+use actix_web::{get, post, web, web::Json, Error, HttpResponse, Responder, Result};
 use actix_web::body::{MessageBody};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
@@ -71,16 +71,13 @@ pub fn error_message_response<E: std::fmt::Debug>(err_message: &str) -> HttpResp
 }
 
 #[post("/query")]
-async fn query(body: Json<Query>) -> Result<impl Responder> {
+async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
     let sql = &body.sql;
     let (statements, sql_type) = database::determine_sql_type(sql)?;
     let ctx = database::register_listing_table(&sql).await?;
     return match sql_type {
         DML => {
-            let results = match database::execute(ctx, sql).await {
-                Ok(c) => c,
-                Err(err) => return Ok(error_response(err)),
-            };
+            let results = database::execute(ctx, sql).await?;
             if results.is_empty() {
                 return Ok(HttpResponse::Ok().json(HttpResponseResult {
                     resp_msg: "".to_string(),
@@ -107,7 +104,9 @@ async fn query(body: Json<Query>) -> Result<impl Responder> {
                     .collect::<std::result::Result<Vec<_>, ArrowError>>() {
                     Ok(f) => f,
                     Err(err) => {
-                        return Ok(error_response(err));
+                        return Err(DBError::SQLError {
+                            message: err.to_string()
+                        }.into())
                     }
                 };
                 for row in 0..batch.num_rows() {
@@ -157,11 +156,11 @@ async fn query(body: Json<Query>) -> Result<impl Responder> {
                         "#,
                             params![table_ref, location, serde_json::to_string(&table_schemas).unwrap(), table_comment],
                         ) {
-                            return Ok(error_response(err.to_string()));
+                            return Err(DBError::SQLError { message: err.to_string() }.into());
                         }
                     }
                     _ => {
-                        return Ok(error_response("Unsupported statement.".to_string()));
+                        return Err(DBError::SQLError { message: "Unsupported statement.".to_string() }.into());
                     }
                 }
             }
