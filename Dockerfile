@@ -16,4 +16,6 @@ COPY --from=builder /usr/local/app/target/release/easy_db .
 
 EXPOSE 3000
 
+VOLUME "/var/lib/easydb"
+
 CMD ["./easy_db"]

@@ -7,6 +7,12 @@ pub enum OperatingSystem {
     MacOS,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum FileType {
+    CSV,
+    JSON,
+}
+
 impl OperatingSystem {
     pub fn default_data_dir(&self) -> &'static str {
         match self {
@@ -59,4 +65,14 @@ pub fn join_paths(base_path: &str, relative_path: &str) -> PathBuf {
 
 pub fn is_relative_path(path: &str) -> bool {
     Path::new(path).is_relative()
+}
+
+pub fn get_file_type(file_name: &str) -> Option<FileType> {
+    if file_name.ends_with(".csv") {
+        Some(FileType::CSV)
+    } else if file_name.ends_with(".json") {
+        Some(FileType::JSON)
+    } else {
+        None
+    }
 }

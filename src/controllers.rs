@@ -56,9 +56,9 @@ pub fn http_response_succeed<V: serde::Serialize>(data: Option<V>, resp_msg: &st
 async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
     let sql = &body.sql;
     let (statements, sql_type) = database::determine_sql_type(sql)?;
-    let ctx = database::register_listing_table(&sql).await?;
     return match sql_type {
         DML => {
+            let ctx = database::register_listing_table(&sql).await?;
             let results = database::execute(ctx, sql).await?;
             if results.is_empty() {
                 return http_response_succeed(
@@ -132,7 +132,8 @@ async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
                         values
                         (?1, ?2, ?3, ?4)
                         "#,
-                            params![table_ref, location, serde_json::to_string(&table_schemas).unwrap(), table_comment],
+                            params![table_ref, location, serde_json::to_string(&table_schemas)
+                                .map_err(|_| DBError::SQLError { message: sql.to_string()})?, table_comment],
                         ) {
                             return Err(DBError::SQLError { message: err.to_string() }.into());
                         }

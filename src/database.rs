@@ -4,12 +4,12 @@ use arrow_array::RecordBatch;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
 use datafusion::logical_expr::sqlparser::parser::Parser;
-use datafusion::prelude::{CsvReadOptions, SessionContext};
+use datafusion::prelude::{CsvReadOptions, NdJsonReadOptions, SessionContext};
 use datafusion::sql::sqlparser::ast::{Query, SetExpr};
 use rusqlite::{params_from_iter};
-use crate::{sqlite};
+use crate::{sqlite, utils};
 use crate::database::SqlType::{DDL, DML};
-use crate::utils::get_os;
+use crate::utils::{get_os, FileType};
 use derive_more::{Display, Error};
 use serde::Serialize;
 use crate::controllers::HttpResponseResult;
@@ -19,20 +19,32 @@ pub enum DBError {
     #[display("Some SQL error occurred: {message}")]
     SQLError { message: String },
     #[display("SQL syntax error found: {sql}")]
-    SQLSyntaxError { sql: String },
+    SQLSyntaxError { sql: String, error: String },
+}
+
+impl DBError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        match *self {
+            DBError::SQLError { .. } => actix_web::http::StatusCode::BAD_REQUEST,
+            DBError::SQLSyntaxError { .. } => actix_web::http::StatusCode::BAD_REQUEST,
+        }
+    }
+    fn log_error(&self) {
+        eprintln!("Error: {:?}", self);
+    }
 }
 
 impl ResponseError for DBError {
     fn error_response(&self) -> HttpResponse {
+        self.log_error();
         let error_response = HttpResponseResult::<String> {
             resp_msg: match *self {
                 DBError::SQLError { ref message } => message.clone(),
-                DBError::SQLSyntaxError { ref sql } => sql.clone(),
+                DBError::SQLSyntaxError { ref sql, error: _ } => sql.clone(),
             },
             data: None,
             resp_code: 1,
         };
-
         HttpResponse::build(self.status_code())
             .json(error_response)
     }
@@ -70,11 +82,11 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBEr
     for item in results {
         match item {
             Ok(v) => {
-                register(&v.table_name, &v.table_path, &ctx, CsvReadOptions::new()).await?;
+                register(&v.table_name, &v.table_path, &ctx).await?;
             }
-            _ => {
+            Err(err) => {
                 return Err(DBError::SQLError {
-                    message: sql.to_string()
+                    message: err.to_string()
                 });
             }
         }
@@ -82,10 +94,25 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBEr
     Ok(ctx)
 }
 
-pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionContext, options: CsvReadOptions<'_>) -> Result<(), DBError> {
-    ctx.register_csv(table_ref, format!("{}/{}", get_data_dir(), table_path), options).await.map_err(|err| DBError::SQLError {
-        message: err.to_string()
-    })?;
+pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionContext) -> Result<(), DBError> {
+    let file_type = utils::get_file_type(table_path);
+    match file_type {
+        Some(value) => match value {
+            FileType::CSV => {
+                ctx.register_csv(table_ref, format!("{}/{}", get_data_dir(), table_path), CsvReadOptions::new()).await.map_err(|err| DBError::SQLError {
+                    message: err.to_string()
+                })?;
+            }
+            FileType::JSON => {
+                ctx.register_json(table_ref, format!("{}/{}", get_data_dir(), table_path), NdJsonReadOptions::default()).await.map_err(|err| DBError::SQLError {
+                    message: err.to_string()
+                })?;
+            }
+        }
+        None => {
+            return Err(DBError::SQLError { message: "Only CSV and JSON file types are supported.".to_string() });
+        }
+    }
 
     Ok(())
 }
@@ -97,8 +124,9 @@ pub async fn execute(ctx: SessionContext, sql: &String) -> Result<Vec<RecordBatc
 
 pub fn parse_sql(sql: &str) -> Result<Vec<Statement>, DBError> {
     let dialect = AnsiDialect {};
-    let statements = Parser::parse_sql(&dialect, sql).map_err(|_| DBError::SQLSyntaxError {
-        sql: sql.to_string()
+    let statements = Parser::parse_sql(&dialect, sql).map_err(|err| DBError::SQLSyntaxError {
+        sql: sql.to_string(),
+        error: err.to_string(),
     })?;
     Ok(statements)
 }
@@ -230,12 +258,14 @@ pub fn determine_sql_type(sql: &String) -> Result<(Vec<Statement>, SqlType), DBE
             }
             _ => {
                 Err(DBError::SQLSyntaxError {
-                    sql: sql.to_string()
+                    sql: sql.to_string(),
+                    error: "未知 SQL 类型".to_string(),
                 })
             }
         };
     }
     Err(DBError::SQLSyntaxError {
-        sql: sql.to_string()
+        sql: sql.to_string(),
+        error: "异常 SQL".to_string(),
     })
 }
