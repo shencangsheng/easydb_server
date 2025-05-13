@@ -58,8 +58,9 @@ async fn query(body: Json<Query>) -> Result<HttpResponse, Error> {
     let (statements, sql_type) = database::determine_sql_type(sql)?;
     return match sql_type {
         DML => {
+            let sql = format!("select * from ({}) as t1 limit 200", sql);
             let ctx = database::register_listing_table(&sql).await?;
-            let results = database::execute(ctx, sql).await?;
+            let results = database::execute(ctx, &sql).await?;
             if results.is_empty() {
                 return http_response_succeed(
                     Some(QueryResult::<String> {

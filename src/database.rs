@@ -1,5 +1,6 @@
 use std::{env};
 use actix_web::{HttpResponse, ResponseError};
+use actix_web::http::StatusCode;
 use arrow_array::RecordBatch;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
@@ -25,8 +26,8 @@ pub enum DBError {
 impl DBError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match *self {
-            DBError::SQLError { .. } => actix_web::http::StatusCode::BAD_REQUEST,
-            DBError::SQLSyntaxError { .. } => actix_web::http::StatusCode::BAD_REQUEST,
+            DBError::SQLError { .. } => StatusCode::BAD_REQUEST,
+            DBError::SQLSyntaxError { .. } => StatusCode::BAD_REQUEST,
         }
     }
     fn log_error(&self) {
