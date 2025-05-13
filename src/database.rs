@@ -1,19 +1,19 @@
-use std::{env};
-use actix_web::{HttpResponse, ResponseError};
+use crate::controllers::HttpResponseResult;
+use crate::database::SqlType::{DDL, DML};
+use crate::utils::{get_os, FileType};
+use crate::{sqlite, utils};
 use actix_web::http::StatusCode;
+use actix_web::{HttpResponse, ResponseError};
 use arrow_array::RecordBatch;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
 use datafusion::logical_expr::sqlparser::parser::Parser;
 use datafusion::prelude::{CsvReadOptions, NdJsonReadOptions, SessionContext};
 use datafusion::sql::sqlparser::ast::{Query, SetExpr};
-use rusqlite::{params_from_iter};
-use crate::{sqlite, utils};
-use crate::database::SqlType::{DDL, DML};
-use crate::utils::{get_os, FileType};
 use derive_more::{Display, Error};
+use rusqlite::params_from_iter;
 use serde::Serialize;
-use crate::controllers::HttpResponseResult;
+use std::env;
 
 #[derive(Debug, Display, Error, Clone)]
 pub enum DBError {
@@ -46,8 +46,7 @@ impl ResponseError for DBError {
             data: None,
             resp_code: 1,
         };
-        HttpResponse::build(self.status_code())
-            .json(error_response)
+        HttpResponse::build(self.status_code()).json(error_response)
     }
 }
 
@@ -69,15 +68,30 @@ struct TableCatalog {
 pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBError> {
     let table_names = sql_to_table_names(sql)?;
     let conn = sqlite::conn();
-    let placeholders = table_names.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-    let sql = format!("SELECT table_ref, table_path FROM catalog WHERE table_ref IN ({})", placeholders);
+    let placeholders = table_names
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT table_ref, table_path FROM catalog WHERE table_ref IN ({})",
+        placeholders
+    );
     let mut stmt = conn.prepare(&sql).unwrap();
-    let results = stmt.query_map(params_from_iter(table_names.iter().map(|s| s.as_str())), |row| {
-        Ok(TableCatalog {
-            table_name: row.get(0)?,
-            table_path: row.get(1)?,
-        })
-    }).unwrap();
+    let results = stmt
+        .query_map(
+            params_from_iter(table_names.iter().map(|s| s.as_str())),
+            |row| {
+                Ok(TableCatalog {
+                    table_name: row.get(0)?,
+                    table_path: row.get(1)?,
+                })
+            },
+        )
+        .map_err(|err| DBError::SQLSyntaxError {
+            sql,
+            error: err.to_string(),
+        })?;
 
     let ctx = session();
     for item in results {
@@ -87,7 +101,7 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBEr
             }
             Err(err) => {
                 return Err(DBError::SQLError {
-                    message: err.to_string()
+                    message: err.to_string(),
                 });
             }
         }
@@ -95,23 +109,41 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBEr
     Ok(ctx)
 }
 
-pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionContext) -> Result<(), DBError> {
+pub async fn register(
+    table_ref: &String,
+    table_path: &String,
+    ctx: &SessionContext,
+) -> Result<(), DBError> {
     let file_type = utils::get_file_type(table_path);
     match file_type {
         Some(value) => match value {
             FileType::CSV => {
-                ctx.register_csv(table_ref, format!("{}/{}", get_data_dir(), table_path), CsvReadOptions::new()).await.map_err(|err| DBError::SQLError {
-                    message: err.to_string()
+                ctx.register_csv(
+                    table_ref,
+                    format!("{}/{}", get_data_dir(), table_path),
+                    CsvReadOptions::new(),
+                )
+                .await
+                .map_err(|err| DBError::SQLError {
+                    message: err.to_string(),
                 })?;
             }
             FileType::JSON => {
-                ctx.register_json(table_ref, format!("{}/{}", get_data_dir(), table_path), NdJsonReadOptions::default()).await.map_err(|err| DBError::SQLError {
-                    message: err.to_string()
+                ctx.register_json(
+                    table_ref,
+                    format!("{}/{}", get_data_dir(), table_path),
+                    NdJsonReadOptions::default(),
+                )
+                .await
+                .map_err(|err| DBError::SQLError {
+                    message: err.to_string(),
                 })?;
             }
-        }
+        },
         None => {
-            return Err(DBError::SQLError { message: "Only CSV and JSON file types are supported.".to_string() });
+            return Err(DBError::SQLError {
+                message: "Only CSV and JSON file types are supported.".to_string(),
+            });
         }
     }
 
@@ -119,8 +151,12 @@ pub async fn register(table_ref: &String, table_path: &String, ctx: &SessionCont
 }
 
 pub async fn execute(ctx: SessionContext, sql: &String) -> Result<Vec<RecordBatch>, DBError> {
-    let value = ctx.sql(sql).await.map_err(|err| DBError::SQLError { message: err.to_string() })?;
-    value.collect().await.map_err(|err| DBError::SQLError { message: err.to_string() })
+    let value = ctx.sql(sql).await.map_err(|err| DBError::SQLError {
+        message: err.to_string(),
+    })?;
+    value.collect().await.map_err(|err| DBError::SQLError {
+        message: err.to_string(),
+    })
 }
 
 pub fn parse_sql(sql: &str) -> Result<Vec<Statement>, DBError> {
@@ -144,7 +180,9 @@ pub fn sql_to_table_names(sql: &String) -> Result<Vec<String>, DBError> {
                 extract_table_names_from_query(&query, &mut table_names);
             }
             _ => {
-                return Err(DBError::SQLError { message: sql.to_string() })
+                return Err(DBError::SQLError {
+                    message: sql.to_string(),
+                })
             }
         }
     }
@@ -186,7 +224,10 @@ fn extract_table_names_from_query(query: &Query, table_names: &mut Vec<String>) 
 
 /// 从带有连接的表中提取表名
 /// Extract table names from tables with joins
-fn extract_table_names_from_table_with_joins(table_with_joins: &TableWithJoins, table_names: &mut Vec<String>) {
+fn extract_table_names_from_table_with_joins(
+    table_with_joins: &TableWithJoins,
+    table_names: &mut Vec<String>,
+) {
     extract_table_names_from_table_factor(&table_with_joins.relation, table_names);
 
     for join in &table_with_joins.joins {
@@ -196,7 +237,10 @@ fn extract_table_names_from_table_with_joins(table_with_joins: &TableWithJoins, 
 
 /// 从表因子中提取表名
 /// Extract table names from table factors
-fn extract_table_names_from_table_factor(table_factor: &TableFactor, table_names: &mut Vec<String>) {
+fn extract_table_names_from_table_factor(
+    table_factor: &TableFactor,
+    table_names: &mut Vec<String>,
+) {
     match table_factor {
         // 处理普通表
         // Handle regular tables
@@ -251,18 +295,12 @@ pub fn determine_sql_type(sql: &String) -> Result<(Vec<Statement>, SqlType), DBE
     let statements = parse_sql(sql)?;
     for statement in &statements {
         return match statement {
-            Statement::Query(_) => {
-                Ok((statements, DML))
-            }
-            Statement::CreateTable(_) => {
-                Ok((statements, DDL))
-            }
-            _ => {
-                Err(DBError::SQLSyntaxError {
-                    sql: sql.to_string(),
-                    error: "未知 SQL 类型".to_string(),
-                })
-            }
+            Statement::Query(_) => Ok((statements, DML)),
+            Statement::CreateTable(_) => Ok((statements, DDL)),
+            _ => Err(DBError::SQLSyntaxError {
+                sql: sql.to_string(),
+                error: "未知 SQL 类型".to_string(),
+            }),
         };
     }
     Err(DBError::SQLSyntaxError {
