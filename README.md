@@ -4,8 +4,8 @@
 
 ## 📖 Features
 
-- Csv、JSON 文件以 SQL 的方式访问
-- 查询结果导出 Csv、JSON 文件
+- CSV、JSON 文件以 SQL 的方式访问
+- 查询结果导出 CSV、JSON 文件
 
 ## 🔮 Roadmap
 
