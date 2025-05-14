@@ -5,6 +5,7 @@ use crate::{sqlite, utils};
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
 use arrow_array::RecordBatch;
+use datafusion::dataframe::DataFrame;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
 use datafusion::logical_expr::sqlparser::parser::Parser;
@@ -67,6 +68,10 @@ struct TableCatalog {
 
 pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBError> {
     let table_names = sql_to_table_names(sql)?;
+    let ctx = session();
+    if table_names.is_empty() {
+        return Ok(ctx);
+    }
     let conn = sqlite::conn();
     let placeholders = table_names
         .iter()
@@ -92,8 +97,6 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBEr
             sql,
             error: err.to_string(),
         })?;
-
-    let ctx = session();
     for item in results {
         match item {
             Ok(v) => {
@@ -150,11 +153,15 @@ pub async fn register(
     Ok(())
 }
 
-pub async fn execute(ctx: SessionContext, sql: &String) -> Result<Vec<RecordBatch>, DBError> {
-    let value = ctx.sql(sql).await.map_err(|err| DBError::SQLError {
+pub async fn data_frame(ctx: &SessionContext, sql: &String) -> Result<DataFrame, DBError> {
+    ctx.sql(sql).await.map_err(|err| DBError::SQLError {
         message: err.to_string(),
-    })?;
-    value.collect().await.map_err(|err| DBError::SQLError {
+    })
+}
+
+pub async fn execute(ctx: &SessionContext, sql: &String) -> Result<Vec<RecordBatch>, DBError> {
+    let data_frame = data_frame(&ctx, sql).await?;
+    data_frame.collect().await.map_err(|err| DBError::SQLError {
         message: err.to_string(),
     })
 }

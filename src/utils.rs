@@ -1,4 +1,45 @@
+use crate::controllers::HttpResponseResult;
+use actix_web::http::StatusCode;
+use actix_web::{HttpResponse, ResponseError};
+use derive_more::{Display, Error};
+use serde::Deserialize;
+use std::env;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Display, Error, Clone)]
+pub enum HttpError {
+    #[display("File not found: {file_name}")]
+    NotFound { file_name: String },
+    #[display("Internal server error")]
+    InternalServerError { error: String },
+}
+
+impl HttpError {
+    fn status_code(&self) -> actix_web::http::StatusCode {
+        match *self {
+            HttpError::NotFound { .. } => StatusCode::NOT_FOUND,
+            HttpError::InternalServerError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+    fn log_error(&self) {
+        eprintln!("Error: {:?}", self);
+    }
+}
+
+impl ResponseError for HttpError {
+    fn error_response(&self) -> HttpResponse {
+        self.log_error();
+        let error_response = HttpResponseResult::<String> {
+            resp_msg: match *self {
+                HttpError::NotFound { ref file_name } => file_name.clone(),
+                HttpError::InternalServerError { ref error } => error.clone(),
+            },
+            data: None,
+            resp_code: 1,
+        };
+        HttpResponse::build(self.status_code()).json(error_response)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum OperatingSystem {
@@ -7,7 +48,7 @@ pub enum OperatingSystem {
     MacOS,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Deserialize)]
 pub enum FileType {
     CSV,
     JSON,
@@ -18,7 +59,15 @@ impl OperatingSystem {
         match self {
             OperatingSystem::Windows => "C:\\ProgramData\\easydb",
             OperatingSystem::Linux => "/var/lib/easydb",
-            OperatingSystem::MacOS => "/tmp/easydb",
+            OperatingSystem::MacOS => concat!(env!("HOME"), "/Documents/easydb"),
+        }
+    }
+
+    pub fn tmp_dir(&self) -> &'static str {
+        match self {
+            OperatingSystem::Windows => "C:\\Windows\\Temp\\",
+            OperatingSystem::Linux => "/tmp/easydb/",
+            OperatingSystem::MacOS => "/tmp/easydb/",
         }
     }
 }
