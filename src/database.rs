@@ -118,29 +118,26 @@ pub async fn register(
     ctx: &SessionContext,
 ) -> Result<(), DBError> {
     let file_type = utils::get_file_type(table_path);
+    let table_path = if utils::is_relative_path(table_path) {
+        format!("{}/{}", get_data_dir(), table_path)
+    } else {
+        table_path.to_string()
+    };
     match file_type {
         Some(value) => match value {
             FileType::CSV => {
-                ctx.register_csv(
-                    table_ref,
-                    format!("{}/{}", get_data_dir(), table_path),
-                    CsvReadOptions::new(),
-                )
-                .await
-                .map_err(|err| DBError::SQLError {
-                    message: err.to_string(),
-                })?;
+                ctx.register_csv(table_ref, table_path, CsvReadOptions::new())
+                    .await
+                    .map_err(|err| DBError::SQLError {
+                        message: err.to_string(),
+                    })?;
             }
             FileType::JSON => {
-                ctx.register_json(
-                    table_ref,
-                    format!("{}/{}", get_data_dir(), table_path),
-                    NdJsonReadOptions::default(),
-                )
-                .await
-                .map_err(|err| DBError::SQLError {
-                    message: err.to_string(),
-                })?;
+                ctx.register_json(table_ref, table_path, NdJsonReadOptions::default())
+                    .await
+                    .map_err(|err| DBError::SQLError {
+                        message: err.to_string(),
+                    })?;
             }
         },
         None => {

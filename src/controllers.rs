@@ -6,7 +6,7 @@ use crate::{sqlite, utils};
 use actix_web::{get, post, web, web::Json, Error, HttpResponse, Responder, Result};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
-use chrono::Utc;
+use chrono::{Local};
 use datafusion::dataframe::DataFrameWriteOptions;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use rusqlite::params;
@@ -136,12 +136,6 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                                 .into())
                             }
                         };
-                        if !utils::is_relative_path(location.as_ref()) {
-                            return Err(DBError::SQLError {
-                                message: "The location must be a relative path.".to_string(),
-                            }
-                            .into());
-                        }
                         let table_ref = query.name.to_string();
                         let table_schemas: Vec<TableFieldSchema> = query
                             .columns
@@ -230,10 +224,12 @@ async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Error> {
         DML => {
             let ctx = database::register_listing_table(&sql).await?;
             let data_frame = database::data_frame(&ctx, sql).await?;
+            let now = Local::now();
             let mut file_path = format!(
-                "{}query-{}",
+                "{}query-{}{}",
                 utils::get_os().tmp_dir(),
-                Utc::now().timestamp()
+                now.format("%Y%m%d%H%M%S"),
+                now.timestamp_subsec_millis()
             );
             match &body.file_type {
                 FileType::JSON => {
