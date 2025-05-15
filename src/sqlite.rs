@@ -1,4 +1,5 @@
-use rusqlite::Connection;
+use chrono::Local;
+use rusqlite::{params, Connection};
 
 pub fn conn() -> Connection {
     Connection::open("sqlite/easydb.db").unwrap()
@@ -16,5 +17,29 @@ pub fn init_db() {
                   table_schema TEXT
                   )",
         [],
-    ).expect("Failed to create catalog");
+    )
+    .expect("Failed to create catalog");
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS query_history (
+                  id              INTEGER PRIMARY KEY,
+                  user_id INTEGER,
+                  sql text,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  status text
+                  )",
+        [],
+    )
+    .expect("Failed to create catalog");
+}
+
+pub fn insert_query_history(sql: &str, status: &str) {
+    if let Err(_) = conn().execute(
+        r#"
+                        insert into query_history ( sql, status, created_at )
+                        values
+                        (?1, ?2, ?3)
+                        "#,
+        params![sql, status, Local::now().format("%Y-%m-%d %H:%M:%S").to_string()],
+    ) {}
 }

@@ -52,7 +52,12 @@ impl ResponseError for DBError {
 }
 
 pub fn session() -> SessionContext {
-    SessionContext::new()
+    let ctx = SessionContext::new();
+    // ctx.copied_config()
+    //     .options_mut()
+    //     .execution
+    //     .listing_table_ignore_subdirectory = false;
+    ctx
 }
 
 #[derive(Serialize)]
