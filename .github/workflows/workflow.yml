@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Create Release
         run: |
           curl -fsSL -o changelog-echo.sh `wget -qO- -t1 -T2 "https://api.github.com/repos/shencangsheng/Git-Release-Workflow/releases/latest" | grep "browser_download_url" | grep 'changelog-echo.sh"' | head -n 1 | awk -F ': "' '{print $2}' | sed 's/\"//g;s/,//g;s/ //g'`
@@ -70,6 +70,6 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --output "type=image,push=true" \
-            --tag ghcr.io/shencangsheng/${IMAGE_NAME}:latest \
-            --tag ghcr.io/shencangsheng/${IMAGE_NAME}:${{ steps.prepare.outputs.version }} \
+            --tag shencangsheng/registry-mirror-proxy:latest \
+            --tag shencangsheng/registry-mirror-proxy:${{ steps.prepare.outputs.version }} \
             --file Dockerfile .
