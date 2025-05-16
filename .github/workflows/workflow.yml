@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   IMAGE_NAME: "easydb-backend"
 
@@ -31,6 +35,14 @@ jobs:
         id: buildx
         uses: crazy-max/ghaction-docker-buildx@v3
 
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
       - name: Docker Buildx (push)
         run: |
           docker buildx build \
@@ -39,3 +51,12 @@ jobs:
             --tag shencangsheng/${IMAGE_NAME}:latest \
             --tag shencangsheng/${IMAGE_NAME}:${{ steps.prepare.outputs.version }} \
             --file Dockerfile .
+            --cache-from=type=local,src=/tmp/.buildx-cache \
+            --cache-to=type=local,dest=/tmp/.buildx-cache-new
+
+      - name: Save cache
+        if: always()
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache-new
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
