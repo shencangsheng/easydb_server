@@ -14,7 +14,8 @@ pub fn init_db() {
                   table_ref            TEXT NOT NULL UNIQUE,
                   table_path           TEXT NOT NULL,
                   table_comment           TEXT,
-                  table_schema TEXT
+                  table_schema TEXT NOT NULL DEFAULT '[]',
+                  type TEXT NOT NULL DEFAULT 'USER'
                   )",
         [],
     )

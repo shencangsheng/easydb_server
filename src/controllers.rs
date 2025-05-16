@@ -4,10 +4,10 @@ use crate::database::{DBError, SqlType};
 use crate::sqlite::insert_query_history;
 use crate::utils::{FileType, HttpError};
 use crate::{sqlite, utils};
-use actix_web::{get, post, web, web::Json, Error, HttpResponse, Responder, Result};
+use actix_web::{get, post, web, web::Json, Error, HttpResponse, Result};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
-use chrono::Local;
+use chrono::{Local, Utc};
 use datafusion::dataframe::DataFrameWriteOptions;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use rusqlite::params;
@@ -38,6 +38,7 @@ struct QueryResult<V> {
     header: Option<Vec<String>>,
     rows: Option<Vec<Vec<V>>>,
     sql_type: Option<SqlType>,
+    query_time: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -77,11 +78,12 @@ pub fn http_response_succeed<V: serde::Serialize>(
 async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
     let sql = &body.sql;
     let (statements, sql_type) = database::determine_sql_type(sql)?;
+    let start = Utc::now();
     match sql_type {
         DML => {
-            let sql = format!("select * from ({}) as t1 limit 200", sql);
-            let ctx = database::register_listing_table(&sql).await?;
-            let results = database::execute(&ctx, &sql).await?;
+            let sql = format!("select * from ({}) limit 200", sql);
+            let (ctx, execute_sql) = database::register_listing_table(&sql).await?;
+            let results = database::execute(&ctx, &execute_sql).await?;
             if results.is_empty() {
                 insert_query_history(&body.sql, "successful");
                 return http_response_succeed(
@@ -89,6 +91,7 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                         header: Some(Vec::new()),
                         rows: Some(Vec::new()),
                         sql_type: Some(DML),
+                        query_time: utils::time_difference_from_now(start),
                     }),
                     "",
                 );
@@ -130,6 +133,7 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                     header: Some(header),
                     rows: Some(rows),
                     sql_type: Some(DML),
+                    query_time: utils::time_difference_from_now(start),
                 }),
                 "",
             )
@@ -192,9 +196,10 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
             }
             http_response_succeed(
                 Some(QueryResult::<String> {
-                    rows: None,
-                    header: None,
+                    rows: Some(vec![vec!["successful".to_string()]]),
+                    header: Some(vec!["summary".to_string()]),
                     sql_type: Some(DDL),
+                    query_time: utils::time_difference_from_now(start),
                 }),
                 "",
             )
@@ -203,25 +208,45 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
 }
 
 #[get("/catalog")]
-async fn catalog() -> Result<impl Responder> {
+async fn catalog() -> Result<HttpResponse, Error> {
     let conn = sqlite::conn();
     let mut stmt = conn
-        .prepare("select id, table_ref, table_path, table_schema from catalog")
+        .prepare("select id, table_ref, table_path, table_schema from catalog where type != 'TEMP'")
         .unwrap();
     let catalog_iter = stmt
         .query_map([], |row| {
-            Ok(TableCatalog {
-                id: row.get_unwrap(0),
-                table_ref: row.get_unwrap(1),
-                table_path: row.get_unwrap(2),
-                table_schema: serde_json::from_str(&row.get_unwrap::<usize, String>(3)).unwrap(),
-            })
+            let id = row.get::<usize, i32>(0);
+            let table_ref = row.get::<usize, String>(1);
+            let table_path = row.get::<usize, String>(2);
+            let table_schema = row.get::<usize, String>(3);
+
+            if id.is_err() || table_ref.is_err() || table_path.is_err() || table_schema.is_err() {
+                Err(rusqlite::Error::InvalidQuery)
+            } else {
+                let table_schema = match serde_json::from_str(&table_schema?) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return Err(rusqlite::Error::InvalidQuery);
+                    }
+                };
+
+                Ok(TableCatalog {
+                    id: id?,
+                    table_ref: table_ref?,
+                    table_path: table_path?,
+                    table_schema,
+                })
+            }
         })
-        .unwrap();
+        .map_err(|e| HttpError::InternalServerError {
+            error: e.to_string(),
+        })?;
 
     let mut tables = Vec::new();
     for catalog in catalog_iter {
-        tables.push(catalog.unwrap());
+        tables.push(catalog.map_err(|e| HttpError::InternalServerError {
+            error: e.to_string(),
+        })?);
     }
 
     http_response_succeed(Some(tables), "")
@@ -233,8 +258,8 @@ async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Error> {
     let (_, sql_type) = database::determine_sql_type(sql)?;
     match sql_type {
         DML => {
-            let ctx = database::register_listing_table(&sql).await?;
-            let data_frame = database::data_frame(&ctx, sql).await?;
+            let (ctx, execute_sql) = database::register_listing_table(&sql).await?;
+            let data_frame = database::data_frame(&ctx, &execute_sql).await?;
             let now = Local::now();
             let mut file_path = format!(
                 "{}query-{}{}",

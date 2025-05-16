@@ -1,7 +1,10 @@
 use crate::controllers::HttpResponseResult;
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
+use chrono::{DateTime, Utc};
 use derive_more::{Display, Error};
+use rand::distr::Alphanumeric;
+use rand::Rng;
 use serde::Deserialize;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -117,6 +120,7 @@ pub fn is_relative_path(path: &str) -> bool {
 }
 
 pub fn get_file_type(file_name: &str) -> Option<FileType> {
+    let file_name = file_name.trim_end_matches('\'');
     if file_name.ends_with(".csv") {
         Some(FileType::CSV)
     } else if file_name.ends_with(".json") {
@@ -124,4 +128,27 @@ pub fn get_file_type(file_name: &str) -> Option<FileType> {
     } else {
         None
     }
+}
+
+pub fn time_difference_from_now(input_time: DateTime<Utc>) -> String {
+    let now = Utc::now();
+    let duration = now.signed_duration_since(input_time);
+
+    if duration.num_milliseconds() < 1000 {
+        format!("{}ms", duration.num_milliseconds())
+    } else if duration.num_seconds() < 60 {
+        format!("{}s", duration.num_seconds())
+    } else if duration.num_minutes() < 60 {
+        format!("{}m", duration.num_minutes())
+    } else {
+        format!("{}h", duration.num_hours())
+    }
+}
+
+pub fn generate_random_string(length: usize) -> String {
+    let mut rng = rand::rng();
+    let random_string: String = (0..length)
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .collect();
+    random_string
 }

@@ -12,7 +12,7 @@
 - [ ] 根据路径自动识别表
 - [ ] 自动生成 table schema
 - [ ] 支持输出更多数据类型
-- [ ] 支持 `select * from '/path/example.csv'` 直接访问本地文件，不需要提前 `create table`
+- [x] 支持 `select * from '/path/example.csv'` 直接访问本地文件，不需要提前 `create table`
 - [ ] 支持 s3 远程文件
 - [ ] 支持多路径
 

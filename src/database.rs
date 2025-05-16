@@ -5,6 +5,7 @@ use crate::{sqlite, utils};
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
 use arrow_array::RecordBatch;
+use chrono::Utc;
 use datafusion::dataframe::DataFrame;
 use datafusion::logical_expr::sqlparser::ast::{Expr, Statement, TableFactor, TableWithJoins};
 use datafusion::logical_expr::sqlparser::dialect::AnsiDialect;
@@ -12,7 +13,7 @@ use datafusion::logical_expr::sqlparser::parser::Parser;
 use datafusion::prelude::{CsvReadOptions, NdJsonReadOptions, SessionContext};
 use datafusion::sql::sqlparser::ast::{Query, SetExpr};
 use derive_more::{Display, Error};
-use rusqlite::params_from_iter;
+use rusqlite::{params, params_from_iter};
 use serde::Serialize;
 use std::env;
 
@@ -71,41 +72,85 @@ struct TableCatalog {
     table_path: String,
 }
 
-pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBError> {
-    let table_names = sql_to_table_names(sql)?;
+pub async fn register_listing_table(sql: &String) -> Result<(SessionContext, String), DBError> {
+    let mut sql = sql.clone();
+    let table_names = sql_to_table_names(&sql)?;
     let ctx = session();
     if table_names.is_empty() {
-        return Ok(ctx);
+        return Err(DBError::SQLSyntaxError {
+            sql,
+            error: "Table name is empty".to_string(),
+        });
     }
     let conn = sqlite::conn();
+    let mut tables: Vec<String> = Vec::new();
+    let temp_tables = table_names
+        .iter()
+        .filter(|name| match { utils::get_file_type(name) } {
+            Some(_) => true,
+            None => {
+                tables.push(name.to_string());
+                false
+            }
+        })
+        .map(|name| TableCatalog {
+            table_name: format!(
+                "temp_{}_{}",
+                Utc::now().timestamp(),
+                utils::generate_random_string(4)
+            ),
+            table_path: name.to_string(),
+        })
+        .collect::<Vec<TableCatalog>>();
+
+    if !temp_tables.is_empty() {
+        for table in temp_tables {
+            conn.execute(
+                r#"
+                        insert into catalog ( table_ref, table_path, type )
+                        values
+                        (?1, ?2, ?3)
+                        "#,
+                params![
+                    &table.table_name,
+                    &table.table_path.replace("'", ""),
+                    "TEMP"
+                ],
+            )
+            .map_err(|err| DBError::SQLError {
+                message: err.to_string(),
+            })?;
+
+            sql = sql.replace(&table.table_path, &table.table_name);
+            tables.push(table.table_name);
+        }
+    }
+
     let placeholders = table_names
         .iter()
         .map(|_| "?")
         .collect::<Vec<_>>()
         .join(", ");
-    let sql = format!(
+    let catalog_sql = format!(
         "SELECT table_ref, table_path FROM catalog WHERE table_ref IN ({})",
         placeholders
     );
-    let mut stmt = conn.prepare(&sql).unwrap();
+    let mut stmt = conn.prepare(&catalog_sql).unwrap();
     let results = stmt
-        .query_map(
-            params_from_iter(table_names.iter().map(|s| s.as_str())),
-            |row| {
-                Ok(TableCatalog {
-                    table_name: row.get(0)?,
-                    table_path: row.get(1)?,
-                })
-            },
-        )
+        .query_map(params_from_iter(tables.iter().map(|s| s.as_str())), |row| {
+            Ok(TableCatalog {
+                table_name: row.get(0)?,
+                table_path: row.get(1)?,
+            })
+        })
         .map_err(|err| DBError::SQLSyntaxError {
-            sql,
+            sql: sql.clone(),
             error: err.to_string(),
         })?;
     for item in results {
         match item {
             Ok(v) => {
-                register(&v.table_name, &v.table_path, &ctx).await?;
+                register_table(&v.table_name, &v.table_path, &ctx).await?;
             }
             Err(err) => {
                 return Err(DBError::SQLError {
@@ -114,10 +159,10 @@ pub async fn register_listing_table(sql: &String) -> Result<SessionContext, DBEr
             }
         }
     }
-    Ok(ctx)
+    Ok((ctx, sql))
 }
 
-pub async fn register(
+pub async fn register_table(
     table_ref: &String,
     table_path: &String,
     ctx: &SessionContext,
