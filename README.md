@@ -1,12 +1,16 @@
 # EasyDB
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/shencangsheng/easydb.svg)](https://hub.docker.com/r/shencangsheng/easydb)
+
+简体中文 | [English](./README.en-us.md)
+
 “开箱即用”，使用 `SQL` 驱动 `CSV`、`JSON`、`Parquet` 文件，底层采用了由 Rust 编写的高性能可扩展查询引擎 `DataFusion`。
 
-## 📖 Features
+## 📖 功能
 
 - SQL 访问 CSV、JSON 文件
 
-## 🔮 Roadmap
+## 🔮 路线
 
 - [ ] 优化异常提示
 - [ ] 根据路径自动识别表
@@ -15,6 +19,8 @@
 - [x] 支持 `select * from '/path/example.csv'` 直接访问本地文件，不需要提前 `create table`
 - [ ] 支持 s3 远程文件
 - [ ] 支持多路径
+
+## 示例
 
 ## 👍 依赖库
 

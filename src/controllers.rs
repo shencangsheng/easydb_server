@@ -2,7 +2,7 @@ use crate::database;
 use crate::database::SqlType::{DDL, DML};
 use crate::database::{DBError, SqlType};
 use crate::sqlite::insert_query_history;
-use crate::utils::{FileType, HttpError};
+use crate::utils::{get_encoded_file_name, FileType, HttpError};
 use crate::{sqlite, utils};
 use actix_web::{get, post, web, web::Json, Error, HttpResponse, Result};
 use arrow::error::ArrowError;
@@ -14,6 +14,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 
 #[derive(Deserialize)]
 struct Query {
@@ -287,12 +288,18 @@ async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Error> {
                         })?;
                 }
             }
-            match File::open(&file_path) {
+            let path = Path::new(&file_path);
+            match File::open(&path) {
                 Ok(mut file) => {
                     let mut contents = Vec::new();
+                    let name = get_encoded_file_name(&path).map_err(|e| HttpError::NotFound {
+                        file_name: e.to_string(),
+                    })?;
+
                     match file.read_to_end(&mut contents) {
                         Ok(_) => Ok(HttpResponse::Ok()
                             .content_type("application/octet-stream")
+                            .append_header(("attachment", format!("filename={}", name)))
                             .body(contents)),
                         Err(_) => Err(Error::from(HttpError::InternalServerError {
                             error: "Could not read file".to_string(),
