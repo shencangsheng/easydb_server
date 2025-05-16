@@ -70,6 +70,6 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --output "type=image,push=true" \
-            --tag shencangsheng/registry-mirror-proxy:latest \
-            --tag shencangsheng/registry-mirror-proxy:${{ steps.prepare.outputs.version }} \
+            --tag shencangsheng/${IMAGE_NAME}:latest \
+            --tag shencangsheng/${IMAGE_NAME}:${{ steps.prepare.outputs.version }} \
             --file Dockerfile .
