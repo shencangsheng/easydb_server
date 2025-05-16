@@ -124,7 +124,7 @@ pub fn get_file_type(file_name: &str) -> Option<FileType> {
     let file_name = file_name.trim_end_matches('\'');
     if file_name.ends_with(".csv") {
         Some(FileType::CSV)
-    } else if file_name.ends_with(".json") {
+    } else if file_name.ends_with(".log") {
         Some(FileType::JSON)
     } else {
         None

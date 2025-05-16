@@ -10,12 +10,12 @@ RUN cargo build --release
 
 FROM alpine:3.21
 
+VOLUME ["/usr/local/app/sqlite", "/var/lib/easydb"]
+
 WORKDIR /usr/local/app
 
 COPY --from=builder /usr/local/app/target/release/easy_db .
 
 EXPOSE 3000
-
-VOLUME "/var/lib/easydb"
 
 CMD ["./easy_db"]

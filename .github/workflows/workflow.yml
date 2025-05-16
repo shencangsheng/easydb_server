@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  IMAGE_NAME: "easydb-backend"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Create Release
+        run: |
+          curl -fsSL -o changelog-echo.sh `wget -qO- -t1 -T2 "https://api.github.com/repos/shencangsheng/Git-Release-Workflow/releases/latest" | grep "browser_download_url" | grep 'changelog-echo.sh"' | head -n 1 | awk -F ': "' '{print $2}' | sed 's/\"//g;s/,//g;s/ //g'`
+          bash changelog-echo.sh >CHANGELOG.md
+      - name: Archive code coverage results
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifact
+          path: |
+            CHANGELOG.md
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: artifact
+          path: ./
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          body_path: CHANGELOG.md
+  push_image:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+
+      - name: Prepare
+        id: prepare
+        run: |
+          echo ::set-output name=version::${GITHUB_REF#refs/*/}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: crazy-max/ghaction-docker-buildx@v3
+
+      - name: Docker Buildx (push)
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --output "type=image,push=true" \
+            --tag ghcr.io/shencangsheng/${IMAGE_NAME}:latest \
+            --tag ghcr.io/shencangsheng/${IMAGE_NAME}:${{ steps.prepare.outputs.version }} \
+            --file Dockerfile .

@@ -270,7 +270,7 @@ async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Error> {
             );
             match &body.file_type {
                 FileType::JSON => {
-                    file_path.push_str(".json");
+                    file_path.push_str(".log");
                     data_frame
                         .write_json(&file_path, DataFrameWriteOptions::new(), None)
                         .await

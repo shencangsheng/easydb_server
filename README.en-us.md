@@ -16,6 +16,34 @@
 - [ ] Support remote files on s3
 - [ ] Support multiple paths
 
+## 🚀 Quick Start
+
+```bash
+git clone https://github.com/shencangsheng/easy_db.git
+docker compose up -d
+# http://127.0.0.1:8088
+```
+
+### Examples
+
+```sql
+select * from '/var/lib/easydb/example/order*.csv';
+```
+
+```sql
+create table user () location 'example/user.csv';
+```
+
+```sql
+create table log () location 'example/2025*.log';
+```
+
+```sql
+select *
+from user as t1
+inner join log as t2 on (t1.id id = t2.user_id)
+```
+
 ## 👍 Dependencies
 
 These open-source libraries are used to create this project.

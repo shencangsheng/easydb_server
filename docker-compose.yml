@@ -1,0 +1,43 @@
+version: "3.8"
+
+x-variables:
+  BACKEND_VERSION: "v0.1.0"
+  FRONTEND_VERSION: "v0.1.0"
+
+services:
+  easydb-backend:
+    image: shencangsheng/easydb-backend:${x-variables.BACKEND_VERSION}
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      - easydb-net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - db-data:/usr/local/app/sqlite
+      - "./example:/var/lib/easydb/example"
+  easydb-frontend:
+    image: shencangsheng/easydb-frontend:${x-variables.FRONTEND_VERSION}
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "8088:80"
+    networks:
+      - easydb-net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      easydb-backend:
+        condition: service_healthy
+volumes:
+  db-data:
+networks:
+  easydb-net:
