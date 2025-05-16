@@ -1,6 +1,6 @@
-FROM rust:1.83.0-alpine3.21 as builder
+FROM rust:1.83.0-bullseye as builder
 
-RUN apk add --no-cache musl-dev sqlite-dev
+RUN apk add --no-cache musl-dev sqlite-dev build-base musl-dev linux-headers sqlite-dev
 
 WORKDIR /usr/local/app
 

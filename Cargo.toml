@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-datafusion = { version = "47.0.0",  features = ["backtrace"] }
+datafusion = { version = "47.0.0", features = ["backtrace"] }
 arrow = "55.0.0"
 arrow-array = "55.0.0"
 actix-web = "4"
