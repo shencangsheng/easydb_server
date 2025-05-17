@@ -1,14 +1,12 @@
 FROM rust:1.83.0-bullseye as builder
 
-RUN apk add --no-cache musl-dev sqlite-dev build-base musl-dev linux-headers sqlite-dev
-
 WORKDIR /usr/local/app
 
 COPY . .
 
 RUN cargo build --release
 
-FROM alpine:3.21
+FROM debian:bullseye-slim
 
 VOLUME ["/usr/local/app/sqlite", "/var/lib/easydb"]
 
