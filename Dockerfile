@@ -8,6 +8,11 @@ RUN cargo build --release
 
 FROM debian:bullseye-slim
 
+RUN apt update && \
+    apt-get install -y --no-install-recommends \
+    libsqlite3-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 VOLUME ["/usr/local/app/sqlite", "/var/lib/easydb"]
 
 WORKDIR /usr/local/app
