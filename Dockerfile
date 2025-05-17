@@ -4,7 +4,7 @@ WORKDIR /usr/local/app
 
 COPY . .
 
-RUN cargo build --release
+RUN cargo clean && cargo build --release
 
 FROM debian:bullseye-slim
 
