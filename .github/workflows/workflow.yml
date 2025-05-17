@@ -40,6 +40,8 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64/v8 \
             --output "type=image,push=true" \
+            --cache-to type=registry,ref=shencangsheng/${IMAGE_NAME}-cache,mode=max \
+            --cache-from type=registry,ref=shencangsheng/${IMAGE_NAME}-cache \
             --tag shencangsheng/${IMAGE_NAME}:latest \
             --tag shencangsheng/${IMAGE_NAME}:${{ steps.prepare.outputs.version }} \
             --file Dockerfile .

@@ -1,12 +1,8 @@
 version: "3.8"
 
-x-variables:
-  BACKEND_VERSION: "v0.1.0"
-  FRONTEND_VERSION: "v0.1.0"
-
 services:
   easydb-backend:
-    image: shencangsheng/easydb-backend:${x-variables.BACKEND_VERSION}
+    image: shencangsheng/easydb-backend:v0.1.0
     restart: always
     environment:
       TZ: Asia/Shanghai
@@ -21,7 +17,7 @@ services:
       - db-data:/usr/local/app/sqlite
       - "./example:/var/lib/easydb/example"
   easydb-frontend:
-    image: shencangsheng/easydb-frontend:${x-variables.FRONTEND_VERSION}
+    image: shencangsheng/easydb-frontend:v0.1.0
     restart: always
     environment:
       TZ: Asia/Shanghai
