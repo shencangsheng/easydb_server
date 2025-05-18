@@ -4,7 +4,10 @@ WORKDIR /usr/local/app
 
 COPY . .
 
-RUN cargo clean && cargo build --release
+RUN cargo install cargo-chef \
+    && cargo chef prepare --recipe-path recipe.json \
+    && cargo chef cook --release --recipe-path recipe.json \
+    && cargo clean && cargo build --release
 
 FROM debian:bullseye-slim
 
