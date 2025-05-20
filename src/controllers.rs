@@ -344,12 +344,19 @@ async fn query_history() -> Result<HttpResponse, Error> {
     http_response_succeed(Some(results), "")
 }
 
+#[get("/health")]
+async fn health() -> Result<HttpResponse, Error> {
+    http_response_succeed(Some(""), "")
+}
+
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("")
             .service(fetch)
             .service(catalog)
             .service(fetch_export)
-            .service(query_history),
+            .service(query_history)
+            .service(health),
     );
 }
