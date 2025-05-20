@@ -56,6 +56,7 @@ pub enum OperatingSystem {
 pub enum FileType {
     CSV,
     JSON,
+    LOG,
 }
 
 impl OperatingSystem {
@@ -124,8 +125,10 @@ pub fn get_file_type(file_name: &str) -> Option<FileType> {
     let file_name = file_name.trim_end_matches('\'');
     if file_name.ends_with(".csv") {
         Some(FileType::CSV)
-    } else if file_name.ends_with(".log") {
+    } else if file_name.ends_with(".json") {
         Some(FileType::JSON)
+    } else if file_name.ends_with(".log") {
+        Some(FileType::LOG)
     } else {
         None
     }

@@ -269,8 +269,8 @@ async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Error> {
                 now.timestamp_subsec_millis()
             );
             match &body.file_type {
-                FileType::JSON => {
-                    file_path.push_str(".log");
+                FileType::JSON | FileType::LOG => {
+                    file_path.push_str(".json");
                     data_frame
                         .write_json(&file_path, DataFrameWriteOptions::new(), None)
                         .await
@@ -348,7 +348,6 @@ async fn query_history() -> Result<HttpResponse, Error> {
 async fn health() -> Result<HttpResponse, Error> {
     http_response_succeed(Some(""), "")
 }
-
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(

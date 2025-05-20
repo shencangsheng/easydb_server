@@ -189,6 +189,15 @@ pub async fn register_table(
                         message: err.to_string(),
                     })?;
             }
+            FileType::LOG => {
+                let mut options = NdJsonReadOptions::default();
+                options.file_extension = ".log";
+                ctx.register_json(table_ref, table_path, options)
+                    .await
+                    .map_err(|err| DBError::SQLError {
+                        message: err.to_string(),
+                    })?;
+            }
         },
         None => {
             return Err(DBError::SQLError {
