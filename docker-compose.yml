@@ -8,11 +8,6 @@ services:
       TZ: Asia/Shanghai
     networks:
       - easydb-net
-    healthcheck:
-      test: ["CMD", "nc", "-z", "127.0.0.1", "8080"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
     volumes:
       - db-data:/usr/local/app/sqlite
       - "./example:/var/lib/easydb/example"
@@ -25,14 +20,6 @@ services:
       - "8088:80"
     networks:
       - easydb-net
-    healthcheck:
-      test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    depends_on:
-      easydb-backend:
-        condition: service_healthy
 volumes:
   db-data:
 networks:
