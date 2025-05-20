@@ -1,10 +1,14 @@
 # EasyDB
 
-"Out of the box," use `SQL` to drive `CSV`, `JSON`, `Parquet` files, powered by the high-performance and scalable query engine `DataFusion` written in Rust.
+[![Docker Pulls](https://img.shields.io/docker/pulls/shencangsheng/easydb-backend.svg)](https://hub.docker.com/r/shencangsheng/easydb-backend)
+
+EasyDB aims to streamline the data querying process. With EasyDB, you can treat multiple files as a single database and utilize SQL for querying. This project supports various file formats, including CSV, JSON, and Parquet files, without the need for file conversion. 
+
+powered by the high-performance and scalable query engine `DataFusion` written in Rust.
 
 ## 📖 Features
 
-- SQL access to CSV, JSON files
+- Use standard SQL statements to query file data
 
 ## 🔮 Roadmap
 
@@ -15,6 +19,8 @@
 - [x] Support `select * from '/path/example.csv'` to directly access local files without needing to `create table` in advance
 - [ ] Support remote files on s3
 - [ ] Support multiple paths
+- [ ] Support MySQL
+- [ ] Support Parquet files
 
 ## 🚀 Quick Start
 
