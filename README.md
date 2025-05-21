@@ -4,7 +4,7 @@
 
 简体中文 | [English](./README.en-us.md)
 
-EasyDB 是一个由 Rust 编写的 SQL 助手，旨在简化文本文件查询过程。通过 EasyDB，你可以将多个任意文件视为一个数据库，并使用 SQL 进行查询。它支持多种文件格式，包括 CSV、JSON 和 Parquet 文件，无需进行文件转换，开箱即用。
+EasyDB 是一个由 Rust 编写的 SQL 助手，旨在简化文本文件查询过程。通过 EasyDB，你可以将多个文本文件视为一个数据库，并使用 SQL 进行查询。它支持多种文件格式，包括 CSV、JSON 和 Parquet 文件，无需进行文件转换，开箱即用。
 
 底层采用了由 Rust 编写的高性能可扩展查询引擎 `DataFusion`。
 
