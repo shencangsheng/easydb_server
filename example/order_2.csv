@@ -1,4 +1,11 @@
-id,order_id,name
-4,2,张三2
-5,2,李四2
-6,2,王五2
+id,user_id,product_name
+11,111,Kiwi
+12,112,Lemon
+13,113,Mango
+14,114,Nectarine
+15,115,Orange
+16,116,Papaya
+17,117,Quince
+18,118,Raspberry
+19,119,Strawberry
+20,120,Tangerine

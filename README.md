@@ -35,15 +35,15 @@ docker compose up -d
 ### 示例
 
 ```sql
-select * from '/var/lib/easydb/example/order*.csv';
+select * from '/var/lib/easydb/example/order*.csv'
 ```
 
 ```sql
-create table user () location 'example/user.csv';
+create table user () location 'example/user.csv'
 ```
 
 ```sql
-create table log () location 'example/2025*.log';
+create table log () location 'example/2025*.log'
 ```
 
 ```sql
