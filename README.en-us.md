@@ -47,7 +47,7 @@ create table log () location 'example/2025*.log'
 ```sql
 select *
 from user as t1
-inner join log as t2 on (t1.id id = t2.user_id)
+inner join log as t2 on (t1.id = t2.user_id)
 ```
 
 ## 👍 Dependencies
