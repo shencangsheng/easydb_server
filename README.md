@@ -32,6 +32,8 @@ docker compose up -d
 # http://127.0.0.1:8088
 ```
 
+![demo.gif](assets/demo.gif)
+
 ### 示例
 
 ```sql
