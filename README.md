@@ -31,6 +31,7 @@ EasyDB 是一个由 Rust 编写的 SQL 助手，旨在简化文本文件查询�
 
 ```bash
 git clone https://github.com/shencangsheng/easy_db.git
+cd easy_db
 docker compose up -d
 # http://127.0.0.1:8088
 ```

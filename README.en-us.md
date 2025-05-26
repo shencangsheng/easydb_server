@@ -29,6 +29,7 @@ powered by the high-performance and scalable query engine `DataFusion` written i
 
 ```bash
 git clone https://github.com/shencangsheng/easy_db.git
+cd easy_db
 docker compose up -d
 # http://127.0.0.1:8088
 ```
