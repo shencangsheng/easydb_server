@@ -82,7 +82,7 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
     let start = Utc::now();
     match sql_type {
         DML => {
-            let sql = format!("select * from ({}) limit 200", sql);
+            let sql = format!("select * from ({}) limit 200", sql.trim_end_matches(";"));
             let (ctx, execute_sql) = database::register_listing_table(&sql).await?;
             let results = database::execute(&ctx, &execute_sql).await?;
             if results.is_empty() {
