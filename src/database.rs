@@ -354,7 +354,7 @@ pub fn get_data_dir() -> String {
     data_dir
 }
 
-pub fn determine_sql_type(sql: &String) -> Result<(Vec<Statement>, SqlType), DBError> {
+pub fn determine_sql_type(sql: &str) -> Result<(Vec<Statement>, SqlType), DBError> {
     let statements = parse_sql(sql)?;
     for statement in &statements {
         return match statement {

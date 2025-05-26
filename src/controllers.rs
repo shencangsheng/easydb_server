@@ -77,7 +77,7 @@ pub fn http_response_succeed<V: serde::Serialize>(
 
 #[post("/fetch")]
 async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
-    let sql = &body.sql;
+    let sql = body.sql.trim();
     let (statements, sql_type) = database::determine_sql_type(sql)?;
     let start = Utc::now();
     match sql_type {
