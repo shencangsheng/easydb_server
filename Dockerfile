@@ -10,7 +10,7 @@ RUN cargo clean && cargo build --release
 
 FROM debian:bullseye-slim
 
-RUN apt update && \
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*

@@ -2,6 +2,7 @@ use crate::controllers::HttpResponseResult;
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
 use chrono::{DateTime, Utc};
+use datafusion::error::DataFusionError;
 use derive_more::{Display, Error};
 use rand::distr::Alphanumeric;
 use rand::Rng;
