@@ -2,6 +2,7 @@ use crate::response::http_error::Exception::*;
 use crate::response::schema::HttpResponseError;
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
+use backtrace::Backtrace;
 use datafusion::common::DataFusionError;
 use datafusion::sql::sqlparser::parser::ParserError;
 use derive_more::{Display, Error};
@@ -65,7 +66,7 @@ impl Exception {
     }
 
     fn log_error(&self) {
-        eprintln!("Error: {:?}", self);
+        eprintln!("Error: {:?}", self)
     }
 
     pub fn internal_server_error(message: impl Into<String>) -> Self {
@@ -95,6 +96,7 @@ impl Exception {
 
 impl From<DataFusionError> for Exception {
     fn from(error: DataFusionError) -> Self {
+        println!("Error: {:?}", Backtrace::new());
         BadRequest {
             message: error.to_string(),
         }
@@ -103,6 +105,7 @@ impl From<DataFusionError> for Exception {
 
 impl From<ParserError> for Exception {
     fn from(error: ParserError) -> Self {
+        println!("Error: {:?}", Backtrace::new());
         BadRequest {
             message: error.to_string(),
         }
@@ -111,6 +114,7 @@ impl From<ParserError> for Exception {
 
 impl From<rusqlite::Error> for Exception {
     fn from(error: rusqlite::Error) -> Self {
+        println!("Error: {:?}", Backtrace::new());
         BadRequest {
             message: error.to_string(),
         }
@@ -119,6 +123,7 @@ impl From<rusqlite::Error> for Exception {
 
 impl From<arrow::error::ArrowError> for Exception {
     fn from(error: arrow::error::ArrowError) -> Self {
+        println!("Error: {:?}", Backtrace::new());
         BadRequest {
             message: error.to_string(),
         }
@@ -127,6 +132,7 @@ impl From<arrow::error::ArrowError> for Exception {
 
 impl From<actix_web::Error> for Exception {
     fn from(error: actix_web::Error) -> Self {
+        println!("Error: {:?}", Backtrace::new());
         BadRequest {
             message: error.to_string(),
         }
@@ -135,6 +141,7 @@ impl From<actix_web::Error> for Exception {
 
 impl From<serde_json::Error> for Exception {
     fn from(error: serde_json::Error) -> Self {
+        println!("Error: {:?}", Backtrace::new());
         BadRequest {
             message: error.to_string(),
         }

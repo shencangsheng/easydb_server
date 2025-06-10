@@ -4,5 +4,5 @@ use serde::Deserialize;
 pub enum DataSourceFormat {
     CSV,
     JSON,
-    NdJson,
+    NdJson { file_extension: String },
 }

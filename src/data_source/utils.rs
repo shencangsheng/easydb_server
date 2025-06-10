@@ -7,7 +7,13 @@ pub fn get_format(file_name: &str) -> Option<DataSourceFormat> {
     } else if file_name.ends_with(".json") {
         Some(DataSourceFormat::JSON)
     } else if file_name.ends_with(".log") {
-        Some(DataSourceFormat::NdJson)
+        Some(DataSourceFormat::NdJson {
+            file_extension: String::from(".log"),
+        })
+    } else if file_name.ends_with(".txt") {
+        Some(DataSourceFormat::NdJson {
+            file_extension: String::from(".txt"),
+        })
     } else {
         None
     }

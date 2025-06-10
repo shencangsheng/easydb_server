@@ -120,19 +120,6 @@ pub fn is_relative_path(path: &str) -> bool {
     Path::new(path).is_relative()
 }
 
-pub fn get_file_type(file_name: &str) -> Option<FileType> {
-    let file_name = file_name.trim_end_matches('\'');
-    if file_name.ends_with(".csv") {
-        Some(FileType::CSV)
-    } else if file_name.ends_with(".json") {
-        Some(FileType::JSON)
-    } else if file_name.ends_with(".log") {
-        Some(FileType::DnJson)
-    } else {
-        None
-    }
-}
-
 pub fn time_difference_from_now(input_time: DateTime<Utc>) -> String {
     let now = Utc::now();
     let duration = now.signed_duration_since(input_time);

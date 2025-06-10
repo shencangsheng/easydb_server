@@ -1,0 +1,6 @@
+{"timestamp": "2025-05-16T10:15:00Z", "level": "INFO", "message": "User logout successful", "userId": "98765", "username": "bob", "ipAddress": "192.168.1.4", "user_id": 110}
+{"timestamp": "2025-05-16T10:20:00Z", "level": "ERROR", "message": "File upload failed", "errorCode": "UPLOAD_FAIL_004", "details": {"fileName": "report.pdf", "reason": "Network error"}, "user_id": 111}
+{"timestamp": "2025-05-16T10:25:00Z", "level": "WARNING", "message": "CPU usage high", "system": "compute-server-1", "cpuUsage": "90%", "threshold": "85%", "user_id": 112}
+{"timestamp": "2025-05-16T10:30:00Z", "level": "INFO", "message": "User password changed", "userId": "11223", "username": "charlie", "ipAddress": "192.168.1.5", "user_id": 113}
+{"timestamp": "2025-05-16T10:35:00Z", "level": "ERROR", "message": "Service unavailable", "errorCode": "SERVICE_UNAVAIL_005", "details": {"serviceName": "payment", "reason": "Timeout"}, "user_id": 114}
+{"timestamp": "2025-05-16T10:40:00Z", "level": "INFO", "message": "User profile updated", "userId": "33445", "username": "dave", "ipAddress": "192.168.1.6", "user_id": 115}

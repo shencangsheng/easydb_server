@@ -2,16 +2,16 @@ use crate::data_source::schema::DataSourceFormat;
 use crate::data_source::utils::get_format;
 use crate::response::http_error::Exception;
 use crate::server::schema::TableCatalog;
-use crate::sql::parse::{get_table_names};
+use crate::sql::parse::get_table_names;
 use crate::sql::sql_error::SQLError;
 use crate::utils::get_os;
 use crate::{sqlite, utils};
+use arrow_array::RecordBatch;
 use chrono::Utc;
 use datafusion::dataframe::DataFrame;
 use datafusion::prelude::{CsvReadOptions, NdJsonReadOptions, SessionContext};
 use rusqlite::{params, params_from_iter};
 use std::env;
-use arrow_array::RecordBatch;
 
 pub fn session() -> SessionContext {
     let ctx = SessionContext::new();
@@ -45,17 +45,18 @@ pub async fn register_table(
     match data_source_format {
         Some(format) => match format {
             DataSourceFormat::CSV => {
-                ctx.register_csv(table_ref, table_path, CsvReadOptions::new())
+                ctx.register_csv(table_ref, &table_path, CsvReadOptions::new())
                     .await?;
             }
             DataSourceFormat::JSON => {
-                ctx.register_json(table_ref, table_path, NdJsonReadOptions::default())
-                    .await?;
+                return Err(Exception::bad_request_error(
+                    "JSON files are currently not supported.",
+                ))
             }
-            DataSourceFormat::NdJson => {
+            DataSourceFormat::NdJson { file_extension } => {
                 let mut options = NdJsonReadOptions::default();
-                options.file_extension = ".log";
-                ctx.register_json(table_ref, table_path, options).await?;
+                options.file_extension = &file_extension;
+                ctx.register_json(table_ref, &table_path, options).await?;
             }
         },
         None => {
@@ -143,7 +144,6 @@ pub async fn register_listing_table(sql: &String) -> Result<(SessionContext, Str
     }
     Ok((ctx, sql))
 }
-
 
 pub async fn execute(ctx: &SessionContext, sql: &String) -> Result<Vec<RecordBatch>, Exception> {
     let data_frame = get_data_frame(&ctx, sql).await?;
