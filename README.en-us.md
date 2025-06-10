@@ -14,7 +14,7 @@ powered by the high-performance and scalable query engine `DataFusion` written i
 
 ## 🔮 Roadmap
 
-- [ ] Optimize error messages
+- [x] Optimize error messages
 - [ ] Automatically recognize tables based on paths
 - [ ] Automatically generate table schema
 - [ ] Support outputting more data types
