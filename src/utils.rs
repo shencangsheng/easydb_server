@@ -2,14 +2,12 @@ use crate::controllers::HttpResponseResult;
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
 use chrono::{DateTime, Utc};
-use datafusion::error::DataFusionError;
 use derive_more::{Display, Error};
 use rand::distr::Alphanumeric;
 use rand::Rng;
 use serde::Deserialize;
 use std::env;
 use std::path::{Path, PathBuf};
-use urlencoding::encode;
 
 #[derive(Debug, Display, Error, Clone)]
 pub enum HttpError {
@@ -57,7 +55,7 @@ pub enum OperatingSystem {
 pub enum FileType {
     CSV,
     JSON,
-    LOG,
+    DnJson,
 }
 
 impl OperatingSystem {
@@ -129,7 +127,7 @@ pub fn get_file_type(file_name: &str) -> Option<FileType> {
     } else if file_name.ends_with(".json") {
         Some(FileType::JSON)
     } else if file_name.ends_with(".log") {
-        Some(FileType::LOG)
+        Some(FileType::DnJson)
     } else {
         None
     }
@@ -156,16 +154,4 @@ pub fn generate_random_string(length: usize) -> String {
         .map(|_| rng.sample(Alphanumeric) as char)
         .collect();
     random_string
-}
-
-pub fn get_encoded_file_name(path: &Path) -> Result<String, String> {
-    if let Some(file_name) = path.file_name() {
-        if let Some(file_name_str) = file_name.to_str() {
-            Ok(encode(file_name_str).to_string())
-        } else {
-            Err("Failed to convert file name to string.".to_string())
-        }
-    } else {
-        Err("Failed to get file name from path.".to_string())
-    }
 }

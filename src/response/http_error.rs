@@ -1,16 +1,10 @@
-use crate::response::http_error::HttpError::{BadRequest, FileNotFound};
+use crate::response::http_error::Exception::*;
+use crate::response::schema::HttpResponseError;
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
 use datafusion::common::DataFusionError;
+use datafusion::sql::sqlparser::parser::ParserError;
 use derive_more::{Display, Error};
-use serde::Serialize;
-
-#[derive(Serialize)]
-pub struct HttpResponseResult<T> {
-    pub(crate) resp_msg: String,
-    pub(crate) data: Option<T>,
-    pub(crate) resp_code: i32,
-}
 
 #[derive(Debug)]
 struct ExceptionAttributes {
@@ -30,27 +24,30 @@ impl ExceptionAttributes {
 }
 
 #[derive(Debug, Display, Error, Clone)]
-pub enum HttpError {
+pub enum Exception {
     #[display("Internal server error {message}")]
+    InternalServer { message: String },
+    #[display("Bad Request: {message}")]
     BadRequest { message: String },
     #[display("File not found: {file_name}")]
     FileNotFound { file_name: String },
+    #[display("The data is not as expected. Expected: {message}")]
+    UnprocessableEntity { message: String },
 }
 
-impl ResponseError for HttpError {
+impl ResponseError for Exception {
     fn error_response(&self) -> HttpResponse {
         self.log_error();
         let attributes = self.attributes();
-        let error_response = HttpResponseResult::<String> {
+        let error_response = HttpResponseError {
             resp_msg: attributes.resp_msg,
-            data: None,
             resp_code: attributes.resp_code,
         };
         HttpResponse::build(attributes.status_code).json(error_response)
     }
 }
 
-impl HttpError {
+impl Exception {
     fn attributes(&self) -> ExceptionAttributes {
         match self {
             BadRequest { message } => ExceptionAttributes::new(message, StatusCode::BAD_REQUEST),
@@ -58,16 +55,86 @@ impl HttpError {
                 &format!("File not found: {}", file_name),
                 StatusCode::NOT_FOUND,
             ),
+            InternalServer { message } => {
+                ExceptionAttributes::new(message, StatusCode::INTERNAL_SERVER_ERROR)
+            }
+            UnprocessableEntity { message } => {
+                ExceptionAttributes::new(message, StatusCode::UNPROCESSABLE_ENTITY)
+            }
         }
     }
 
     fn log_error(&self) {
         eprintln!("Error: {:?}", self);
     }
+
+    pub fn internal_server_error(message: impl Into<String>) -> Self {
+        InternalServer {
+            message: message.into(),
+        }
+    }
+
+    pub fn bad_request_error(message: impl Into<String>) -> Self {
+        BadRequest {
+            message: message.into(),
+        }
+    }
+
+    pub fn file_not_found_error(file_name: impl Into<String>) -> Self {
+        FileNotFound {
+            file_name: file_name.into(),
+        }
+    }
+
+    pub fn unprocessable_entity_error(message: impl Into<String>) -> Self {
+        UnprocessableEntity {
+            message: message.into(),
+        }
+    }
 }
 
-impl From<DataFusionError> for HttpError {
+impl From<DataFusionError> for Exception {
     fn from(error: DataFusionError) -> Self {
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<ParserError> for Exception {
+    fn from(error: ParserError) -> Self {
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<rusqlite::Error> for Exception {
+    fn from(error: rusqlite::Error) -> Self {
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<arrow::error::ArrowError> for Exception {
+    fn from(error: arrow::error::ArrowError) -> Self {
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<actix_web::Error> for Exception {
+    fn from(error: actix_web::Error) -> Self {
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for Exception {
+    fn from(error: serde_json::Error) -> Self {
         BadRequest {
             message: error.to_string(),
         }

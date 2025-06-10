@@ -1,10 +1,12 @@
-use crate::database;
-use crate::database::SqlType::{DDL, DML};
-use crate::database::{DBError, SqlType};
+use crate::data_source::context::{execute, get_data_frame, register_listing_table};
+use crate::response::http_error::Exception;
+use crate::response::utils::get_encoded_file_name;
+use crate::sql::parse::get_sql_type;
+use crate::sql::schema::SQLType;
 use crate::sqlite::insert_query_history;
-use crate::utils::{get_encoded_file_name, FileType, HttpError};
+use crate::utils::FileType;
 use crate::{sqlite, utils};
-use actix_web::{get, post, web, web::Json, Error, HttpResponse, Result};
+use actix_web::{get, post, web, web::Json, HttpResponse, Result};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use chrono::{Local, Utc};
@@ -38,7 +40,7 @@ pub struct HttpResponseResult<T> {
 struct QueryResult<V> {
     header: Option<Vec<String>>,
     rows: Option<Vec<Vec<V>>>,
-    sql_type: Option<SqlType>,
+    sql_type: Option<SQLType>,
     query_time: String,
 }
 
@@ -67,7 +69,7 @@ struct QueryHistory {
 pub fn http_response_succeed<V: serde::Serialize>(
     data: Option<V>,
     resp_msg: &str,
-) -> Result<HttpResponse> {
+) -> Result<HttpResponse, Exception> {
     Ok(HttpResponse::Ok().json(HttpResponseResult {
         resp_msg: resp_msg.to_string(),
         data,
@@ -76,22 +78,22 @@ pub fn http_response_succeed<V: serde::Serialize>(
 }
 
 #[post("/fetch")]
-async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
+async fn fetch(body: Json<Query>) -> Result<HttpResponse, Exception> {
     let sql = body.sql.trim();
-    let (statements, sql_type) = database::determine_sql_type(sql)?;
+    let (statements, sql_type) = get_sql_type(sql)?;
     let start = Utc::now();
     match sql_type {
-        DML => {
+        SQLType::DML => {
             let sql = format!("select * from ({}) limit 200", sql.trim_end_matches(";"));
-            let (ctx, execute_sql) = database::register_listing_table(&sql).await?;
-            let results = database::execute(&ctx, &execute_sql).await?;
+            let (ctx, execute_sql) = register_listing_table(&sql).await?;
+            let results = execute(&ctx, &execute_sql).await?;
             if results.is_empty() {
                 insert_query_history(&body.sql, "successful");
                 return http_response_succeed(
                     Some(QueryResult::<String> {
                         header: Some(Vec::new()),
                         rows: Some(Vec::new()),
-                        sql_type: Some(DML),
+                        sql_type: Some(SQLType::DML),
                         query_time: utils::time_difference_from_now(start),
                     }),
                     "",
@@ -105,21 +107,16 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                 header.push(field.name().to_string());
             }
             for batch in results {
-                let formatters = match batch
+                let formatters = batch
                     .columns()
                     .iter()
                     .map(|c| ArrayFormatter::try_new(c.as_ref(), &options))
                     .collect::<std::result::Result<Vec<_>, ArrowError>>()
-                {
-                    Ok(f) => f,
-                    Err(err) => {
+                    .map_err(|err| {
                         insert_query_history(&body.sql, "fail");
-                        return Err(DBError::SQLError {
-                            message: err.to_string(),
-                        }
-                        .into());
-                    }
-                };
+                        err
+                    })?;
+
                 for row in 0..batch.num_rows() {
                     let mut cells = Vec::new();
                     for (_, formatter) in formatters.iter().enumerate() {
@@ -133,23 +130,22 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                 Some(QueryResult {
                     header: Some(header),
                     rows: Some(rows),
-                    sql_type: Some(DML),
+                    sql_type: Some(SQLType::DML),
                     query_time: utils::time_difference_from_now(start),
                 }),
                 "",
             )
         }
-        DDL => {
+        SQLType::DDL => {
             for statement in statements {
                 match statement {
                     Statement::CreateTable(query) => {
                         let location = match query.hive_formats.and_then(|hf| hf.location) {
                             Some(loc) => loc,
                             None => {
-                                return Err(DBError::SQLError {
-                                    message: "The location must be present.".to_string(),
-                                }
-                                .into())
+                                return Err(Exception::unprocessable_entity_error(
+                                    "The location must be present.",
+                                ));
                             }
                         };
                         let table_ref = query.name.to_string();
@@ -163,8 +159,9 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                             })
                             .collect();
                         let table_comment = query.comment.map(|x| x.to_string());
+
                         let conn = sqlite::conn();
-                        if let Err(err) = conn.execute(
+                        conn.execute(
                             r#"
                         insert into catalog ( table_ref, table_path, table_schema, table_comment )
                         values
@@ -173,25 +170,15 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                             params![
                                 table_ref,
                                 location,
-                                serde_json::to_string(&table_schemas).map_err(|_| {
-                                    DBError::SQLError {
-                                        message: sql.to_string(),
-                                    }
-                                })?,
+                                serde_json::to_string(&table_schemas)?,
                                 table_comment
                             ],
-                        ) {
-                            return Err(DBError::SQLError {
-                                message: err.to_string(),
-                            }
-                            .into());
-                        }
+                        )?;
                     }
                     _ => {
-                        return Err(DBError::SQLError {
-                            message: "Unsupported statement.".to_string(),
-                        }
-                        .into());
+                        return Err(Exception::unprocessable_entity_error(
+                            "unprocessable_entity_error",
+                        ));
                     }
                 }
             }
@@ -199,7 +186,7 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
                 Some(QueryResult::<String> {
                     rows: Some(vec![vec!["successful".to_string()]]),
                     header: Some(vec!["summary".to_string()]),
-                    sql_type: Some(DDL),
+                    sql_type: Some(SQLType::DDL),
                     query_time: utils::time_difference_from_now(start),
                 }),
                 "",
@@ -209,58 +196,45 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Error> {
 }
 
 #[get("/catalog")]
-async fn catalog() -> Result<HttpResponse, Error> {
+async fn catalog() -> Result<HttpResponse, Exception> {
     let conn = sqlite::conn();
-    let mut stmt = conn
-        .prepare("select id, table_ref, table_path, table_schema from catalog where type != 'TEMP'")
-        .unwrap();
-    let catalog_iter = stmt
-        .query_map([], |row| {
-            let id = row.get::<usize, i32>(0);
-            let table_ref = row.get::<usize, String>(1);
-            let table_path = row.get::<usize, String>(2);
-            let table_schema = row.get::<usize, String>(3);
+    let mut stmt = conn.prepare(
+        "select id, table_ref, table_path, table_schema from catalog where type != 'TEMP'",
+    )?;
 
-            if id.is_err() || table_ref.is_err() || table_path.is_err() || table_schema.is_err() {
-                Err(rusqlite::Error::InvalidQuery)
-            } else {
-                let table_schema = match serde_json::from_str(&table_schema?) {
-                    Ok(v) => v,
-                    Err(_) => {
-                        return Err(rusqlite::Error::InvalidQuery);
-                    }
-                };
-
-                Ok(TableCatalog {
-                    id: id?,
-                    table_ref: table_ref?,
-                    table_path: table_path?,
-                    table_schema,
-                })
-            }
-        })
-        .map_err(|e| HttpError::InternalServerError {
-            error: e.to_string(),
+    let catalog_iter = stmt.query_map([], |row| {
+        let id = row.get::<usize, i32>(0)?;
+        let table_ref = row.get::<usize, String>(1)?;
+        let table_path = row.get::<usize, String>(2)?;
+        let table_schema = row.get::<usize, String>(3)?;
+        let table_schema = serde_json::from_str(&table_schema).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Blob, Box::new(e))
         })?;
+
+        Ok(TableCatalog {
+            id,
+            table_ref,
+            table_path,
+            table_schema,
+        })
+    })?;
 
     let mut tables = Vec::new();
     for catalog in catalog_iter {
-        tables.push(catalog.map_err(|e| HttpError::InternalServerError {
-            error: e.to_string(),
-        })?);
+        tables.push(catalog?);
     }
 
     http_response_succeed(Some(tables), "")
 }
 
 #[post("/query/export")]
-async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Error> {
+async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Exception> {
     let sql = &body.sql;
-    let (_, sql_type) = database::determine_sql_type(sql)?;
+    let (_, sql_type) = get_sql_type(sql)?;
     match sql_type {
-        DML => {
-            let (ctx, execute_sql) = database::register_listing_table(&sql).await?;
-            let data_frame = database::data_frame(&ctx, &execute_sql).await?;
+        SQLType::DML => {
+            let (ctx, execute_sql) = register_listing_table(&sql).await?;
+            let data_frame = get_data_frame(&ctx, &execute_sql).await?;
             let now = Local::now();
             let mut file_path = format!(
                 "{}query-{}{}",
@@ -268,84 +242,69 @@ async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Error> {
                 now.format("%Y%m%d%H%M%S"),
                 now.timestamp_subsec_millis()
             );
+
             match &body.file_type {
-                FileType::JSON | FileType::LOG => {
+                FileType::JSON | FileType::DnJson => {
                     file_path.push_str(".json");
                     data_frame
                         .write_json(&file_path, DataFrameWriteOptions::new(), None)
-                        .await
-                        .map_err(|e| DBError::SQLError {
-                            message: e.to_string(),
-                        })?;
+                        .await?;
                 }
                 FileType::CSV => {
                     file_path.push_str(".csv");
                     data_frame
                         .write_csv(&file_path, DataFrameWriteOptions::new(), None)
-                        .await
-                        .map_err(|e| DBError::SQLError {
-                            message: e.to_string(),
-                        })?;
+                        .await?;
                 }
             }
             let path = Path::new(&file_path);
             match File::open(&path) {
                 Ok(mut file) => {
                     let mut contents = Vec::new();
-                    let name = get_encoded_file_name(&path).map_err(|e| HttpError::NotFound {
-                        file_name: e.to_string(),
-                    })?;
+                    let name = get_encoded_file_name(&path)
+                        .map_err(|e| Exception::unprocessable_entity_error(e))?;
 
                     match file.read_to_end(&mut contents) {
                         Ok(_) => Ok(HttpResponse::Ok()
                             .content_type("application/octet-stream")
                             .append_header(("attachment", format!("filename={}", name)))
                             .body(contents)),
-                        Err(_) => Err(Error::from(HttpError::InternalServerError {
-                            error: "Could not read file".to_string(),
-                        })),
+                        Err(_) => Err(Exception::internal_server_error("Could not read file")),
                     }
                 }
-                Err(_) => Err(HttpError::NotFound {
-                    file_name: file_path.to_string(),
-                }
-                .into()),
+                Err(_) => Err(Exception::file_not_found_error(file_path.to_string())),
             }
         }
-        _ => Err(DBError::SQLError {
-            message: "Only supports Select SQL".to_string(),
-        }
-        .into()),
+        _ => Err(Exception::unprocessable_entity_error(
+            "Only supports Select SQL",
+        )),
     }
 }
 
 #[get("/query/history")]
-async fn query_history() -> Result<HttpResponse, Error> {
+async fn query_history() -> Result<HttpResponse, Exception> {
     let conn = sqlite::conn();
     let mut stmt = conn
-        .prepare("select sql, status, created_at from query_history order by id desc limit 30")
-        .unwrap();
+        .prepare("select sql, status, created_at from query_history order by id desc limit 30")?;
 
-    let query_history_iter = stmt
-        .query_map([], |row| {
-            Ok(QueryHistory {
-                sql: row.get_unwrap(0),
-                status: row.get_unwrap(1),
-                created_at: row.get_unwrap(2),
-            })
+    let query_history_iter = stmt.query_map([], |row| {
+        Ok(QueryHistory {
+            sql: row.get_unwrap(0),
+            status: row.get_unwrap(1),
+            created_at: row.get_unwrap(2),
         })
-        .unwrap();
+    })?;
 
     let mut results = Vec::new();
     for query_history in query_history_iter {
-        results.push(query_history.unwrap());
+        results.push(query_history?);
     }
 
     http_response_succeed(Some(results), "")
 }
 
 #[get("/health")]
-async fn health() -> Result<HttpResponse, Error> {
+async fn health() -> Result<HttpResponse, Exception> {
     http_response_succeed(Some(""), "")
 }
 
