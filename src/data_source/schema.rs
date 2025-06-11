@@ -5,4 +5,5 @@ pub enum DataSourceFormat {
     CSV,
     JSON,
     NdJson { file_extension: String },
+    TSV
 }

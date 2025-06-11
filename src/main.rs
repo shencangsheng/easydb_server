@@ -6,6 +6,7 @@ mod response;
 mod server;
 mod sql;
 mod utils;
+mod request;
 
 use actix_web::{middleware, App, HttpServer};
 

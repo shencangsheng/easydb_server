@@ -14,6 +14,8 @@ pub fn get_format(file_name: &str) -> Option<DataSourceFormat> {
         Some(DataSourceFormat::NdJson {
             file_extension: String::from(".txt"),
         })
+    } else if file_name.ends_with(".tsv") {
+        Some(DataSourceFormat::TSV)
     } else {
         None
     }

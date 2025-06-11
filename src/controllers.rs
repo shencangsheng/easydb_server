@@ -1,6 +1,9 @@
 use crate::data_source::context::{execute, get_data_frame, register_listing_table};
+use crate::request::body::{ExportFile, Fetch};
 use crate::response::http_error::Exception;
+use crate::response::schema::{FetchHistory, FetchResult, HttpResponseResult, TableCatalog};
 use crate::response::utils::get_encoded_file_name;
+use crate::server::schema::TableFieldSchema;
 use crate::sql::parse::get_sql_type;
 use crate::sql::schema::SQLType;
 use crate::sqlite::insert_query_history;
@@ -10,75 +13,16 @@ use actix_web::{get, post, web, web::Json, HttpResponse, Result};
 use arrow::error::ArrowError;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use chrono::{Local, Utc};
+use datafusion::config::CsvOptions;
 use datafusion::dataframe::DataFrameWriteOptions;
 use datafusion::logical_expr::sqlparser::ast::Statement;
 use rusqlite::params;
-use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-#[derive(Deserialize)]
-struct Query {
-    sql: String,
-}
-
-#[derive(Deserialize)]
-struct ExportFile {
-    sql: String,
-    file_type: FileType,
-}
-
-#[derive(Serialize)]
-pub struct HttpResponseResult<T> {
-    pub(crate) resp_msg: String,
-    pub(crate) data: Option<T>,
-    pub(crate) resp_code: i32,
-}
-
-#[derive(Serialize)]
-struct QueryResult<V> {
-    header: Option<Vec<String>>,
-    rows: Option<Vec<Vec<V>>>,
-    sql_type: Option<SQLType>,
-    query_time: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct TableFieldSchema {
-    pub(crate) field: String,
-    pub(crate) field_type: String,
-    pub(crate) comment: Option<String>,
-}
-
-#[derive(Serialize)]
-struct TableCatalog {
-    id: i32,
-    table_ref: String,
-    table_path: String,
-    table_schema: Vec<TableFieldSchema>,
-}
-
-#[derive(Serialize)]
-struct QueryHistory {
-    sql: String,
-    status: String,
-    created_at: String,
-}
-
-pub fn http_response_succeed<V: serde::Serialize>(
-    data: Option<V>,
-    resp_msg: &str,
-) -> Result<HttpResponse, Exception> {
-    Ok(HttpResponse::Ok().json(HttpResponseResult {
-        resp_msg: resp_msg.to_string(),
-        data,
-        resp_code: 0,
-    }))
-}
-
 #[post("/fetch")]
-async fn fetch(body: Json<Query>) -> Result<HttpResponse, Exception> {
+async fn fetch(body: Json<Fetch>) -> Result<HttpResponse, Exception> {
     let sql = body.sql.trim();
     let (statements, sql_type) = get_sql_type(sql)?;
     let start = Utc::now();
@@ -86,11 +30,13 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Exception> {
         SQLType::DML => {
             let sql = format!("select * from ({}) limit 200", sql.trim_end_matches(";"));
             let (ctx, execute_sql) = register_listing_table(&sql).await?;
+
             let results = execute(&ctx, &execute_sql).await?;
             if results.is_empty() {
                 insert_query_history(&body.sql, "successful");
-                return http_response_succeed(
-                    Some(QueryResult::<String> {
+
+                return HttpResponseResult::success(
+                    Some(FetchResult::<String> {
                         header: Some(Vec::new()),
                         rows: Some(Vec::new()),
                         sql_type: Some(SQLType::DML),
@@ -106,6 +52,7 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Exception> {
             for field in schema.fields() {
                 header.push(field.name().to_string());
             }
+
             for batch in results {
                 let formatters = batch
                     .columns()
@@ -125,9 +72,11 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Exception> {
                     rows.push(cells);
                 }
             }
+
             insert_query_history(&body.sql, "successful");
-            http_response_succeed(
-                Some(QueryResult {
+
+            HttpResponseResult::success(
+                Some(FetchResult {
                     header: Some(header),
                     rows: Some(rows),
                     sql_type: Some(SQLType::DML),
@@ -148,6 +97,7 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Exception> {
                                 ));
                             }
                         };
+
                         let table_ref = query.name.to_string();
                         let table_schemas: Vec<TableFieldSchema> = query
                             .columns
@@ -182,8 +132,9 @@ async fn fetch(body: Json<Query>) -> Result<HttpResponse, Exception> {
                     }
                 }
             }
-            http_response_succeed(
-                Some(QueryResult::<String> {
+
+            HttpResponseResult::success(
+                Some(FetchResult::<String> {
                     rows: Some(vec![vec!["successful".to_string()]]),
                     header: Some(vec!["summary".to_string()]),
                     sql_type: Some(SQLType::DDL),
@@ -224,7 +175,7 @@ async fn catalog() -> Result<HttpResponse, Exception> {
         tables.push(catalog?);
     }
 
-    http_response_succeed(Some(tables), "")
+    HttpResponseResult::success(Some(tables), "")
 }
 
 #[post("/query/export")]
@@ -252,6 +203,14 @@ async fn fetch_export(body: Json<ExportFile>) -> Result<HttpResponse, Exception>
                 }
                 FileType::CSV => {
                     file_path.push_str(".csv");
+                    data_frame
+                        .write_csv(&file_path, DataFrameWriteOptions::new(), None)
+                        .await?;
+                }
+                FileType::TSV => {
+                    file_path.push_str(".tsv");
+                    let mut options = CsvOptions::default();
+                    options.delimiter = b'\t';
                     data_frame
                         .write_csv(&file_path, DataFrameWriteOptions::new(), None)
                         .await?;
@@ -288,10 +247,10 @@ async fn query_history() -> Result<HttpResponse, Exception> {
         .prepare("select sql, status, created_at from query_history order by id desc limit 30")?;
 
     let query_history_iter = stmt.query_map([], |row| {
-        Ok(QueryHistory {
-            sql: row.get_unwrap(0),
-            status: row.get_unwrap(1),
-            created_at: row.get_unwrap(2),
+        Ok(FetchHistory {
+            sql: row.get(0)?,
+            status: row.get(1)?,
+            created_at: row.get(2)?,
         })
     })?;
 
@@ -300,12 +259,12 @@ async fn query_history() -> Result<HttpResponse, Exception> {
         results.push(query_history?);
     }
 
-    http_response_succeed(Some(results), "")
+    HttpResponseResult::success(Some(results), "")
 }
 
 #[get("/health")]
 async fn health() -> Result<HttpResponse, Exception> {
-    http_response_succeed(Some(""), "")
+    HttpResponseResult::success(Some(""), "")
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {

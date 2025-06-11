@@ -10,6 +10,7 @@ powered by the high-performance and scalable query engine `DataFusion` written i
 
 - Support CSV
 - Support NdJson
+- Support TSV
 - Use standard SQL statements to query file data
 
 ## 🔮 Roadmap
@@ -24,6 +25,7 @@ powered by the high-performance and scalable query engine `DataFusion` written i
 - [ ] Support multiple paths
 - [ ] Support MySQL
 - [ ] Support Parquet files
+- [x] Support Tsv files
 
 ## 🚀 Quick Start
 

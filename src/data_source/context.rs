@@ -45,8 +45,14 @@ pub async fn register_table(
     match data_source_format {
         Some(format) => match format {
             DataSourceFormat::CSV => {
-                ctx.register_csv(table_ref, &table_path, CsvReadOptions::new())
+                ctx.register_csv(table_ref, &table_path, CsvReadOptions::default())
                     .await?;
+            }
+            DataSourceFormat::TSV => {
+                let mut options = CsvReadOptions::default();
+                options.delimiter = b'\t';
+                options.file_extension = ".tsv";
+                ctx.register_csv(table_ref, &table_path, options).await?;
             }
             DataSourceFormat::JSON => {
                 return Err(Exception::bad_request_error(
