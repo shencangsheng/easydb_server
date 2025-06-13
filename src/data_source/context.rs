@@ -1,3 +1,4 @@
+use crate::data_source::excel::from_file_to_record_batch;
 use crate::data_source::schema::DataSourceFormat;
 use crate::data_source::utils::get_format;
 use crate::response::http_error::Exception;
@@ -63,6 +64,9 @@ pub async fn register_table(
                 let mut options = NdJsonReadOptions::default();
                 options.file_extension = &file_extension;
                 ctx.register_json(table_ref, &table_path, options).await?;
+            }
+            DataSourceFormat::XLSX => {
+                ctx.register_batch(table_ref, from_file_to_record_batch(&table_path)?)?;
             }
         },
         None => {

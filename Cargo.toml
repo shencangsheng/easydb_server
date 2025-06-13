@@ -16,6 +16,8 @@ chrono = "0.4"
 rand = "0.9.1"
 urlencoding = "2.1"
 backtrace = "0.3.75"
+calamine = "0.26.1"
+glob = "0.3.2"
 
 [profile.release]
 incremental = true

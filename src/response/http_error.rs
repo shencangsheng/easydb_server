@@ -3,9 +3,11 @@ use crate::response::schema::HttpResponseError;
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
 use backtrace::Backtrace;
+use calamine::XlsxError;
 use datafusion::common::DataFusionError;
 use datafusion::sql::sqlparser::parser::ParserError;
 use derive_more::{Display, Error};
+use glob::{GlobError, PatternError};
 
 #[derive(Debug)]
 struct ExceptionAttributes {
@@ -141,6 +143,51 @@ impl From<actix_web::Error> for Exception {
 
 impl From<serde_json::Error> for Exception {
     fn from(error: serde_json::Error) -> Self {
+        println!("Error: {:?}", Backtrace::new());
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<PatternError> for Exception {
+    fn from(error: PatternError) -> Self {
+        println!("Error: {:?}", Backtrace::new());
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<GlobError> for Exception {
+    fn from(error: GlobError) -> Self {
+        println!("Error: {:?}", Backtrace::new());
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<std::io::Error> for Exception {
+    fn from(error: std::io::Error) -> Self {
+        println!("Error: {:?}", Backtrace::new());
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<calamine::Error> for Exception {
+    fn from(error: calamine::Error) -> Self {
+        println!("Error: {:?}", Backtrace::new());
+        BadRequest {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<XlsxError> for Exception {
+    fn from(error: XlsxError) -> Self {
         println!("Error: {:?}", Backtrace::new());
         BadRequest {
             message: error.to_string(),

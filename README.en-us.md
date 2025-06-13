@@ -2,7 +2,7 @@
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/shencangsheng/easydb-backend.svg)](https://hub.docker.com/r/shencangsheng/easydb-backend)
 
-EasyDB is an SQL assistant written in Rust, designed to streamline the process of querying text files. With EasyDB, you can treat multiple text files as a single database and perform SQL queries. It supports various file formats, including CSV, NdJson, JSON, and Parquet files, and works out of the box without the need for file conversion. 
+EasyDB is an SQL assistant written in Rust, designed to streamline the process of querying text files. With EasyDB, you can treat multiple text files as a single database and perform SQL queries. It supports various file formats, including CSV, NdJson, JSON, xlsx and Parquet files, and works out of the box without the need for file conversion. 
 
 powered by the high-performance and scalable query engine `DataFusion` written in Rust.
 
@@ -11,6 +11,7 @@ powered by the high-performance and scalable query engine `DataFusion` written i
 - Support CSV
 - Support NdJson
 - Support TSV
+- Support xlsx (**beta**)
 - Use standard SQL statements to query file data
 
 ## 🔮 Roadmap
@@ -26,6 +27,8 @@ powered by the high-performance and scalable query engine `DataFusion` written i
 - [ ] Support MySQL
 - [ ] Support Parquet files
 - [x] Support Tsv files
+- [ ] Optimization of XLSX file performance (enhancing compatibility)
+- [ ] Increase session duration to reduce file load frequency
 
 ## 🚀 Quick Start
 

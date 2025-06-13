@@ -102,5 +102,5 @@ pub fn generate_random_string(length: usize) -> String {
     let random_string: String = (0..length)
         .map(|_| rng.sample(Alphanumeric) as char)
         .collect();
-    random_string
+    random_string.to_lowercase()
 }
