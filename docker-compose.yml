@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   easydb-backend:
-    image: shencangsheng/easydb-backend:v0.3.0
+    image: shencangsheng/easydb-backend:v0.4.0
     restart: always
     environment:
       TZ: Asia/Shanghai
@@ -12,7 +12,7 @@ services:
       - db-data:/usr/local/app/sqlite
       - "./example:/var/lib/easydb/example"
   easydb-frontend:
-    image: shencangsheng/easydb-frontend:v0.3.0
+    image: shencangsheng/easydb-frontend:v0.4.0
     restart: always
     environment:
       TZ: Asia/Shanghai
