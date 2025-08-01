@@ -11,8 +11,11 @@ powered by the high-performance and scalable query engine `DataFusion` written i
 - Support CSV
 - Support NdJson
 - Support TSV
-- Support xlsx (**beta**)
 - Use standard SQL statements to query file data
+
+## 🧪 Beta
+
+- Support xlsx
 
 ## 🔮 Roadmap
 
