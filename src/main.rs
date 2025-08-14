@@ -9,17 +9,29 @@ mod server;
 mod sql;
 mod utils;
 
-use actix_web::{middleware, App, HttpServer};
+use crate::context::session::ConcurrentSessionContext;
+use actix_web::{middleware, web, App, HttpServer};
+use moka::future::Cache;
+use std::sync::Arc;
+use std::time::Duration;
 
+struct AppState {
+    session: Cache<String, Arc<ConcurrentSessionContext>>,
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let app_state = web::Data::new(AppState {
+        session: Cache::builder()
+            .time_to_idle(Duration::from_secs(2 * 60 * 60))
+            .build(),
+    });
+
     sqlite::init_db();
-    HttpServer::new(|| {
+    HttpServer::new(move || {
         App::new()
-            .wrap(
-                middleware::Logger::default()
-            )
+            .app_data(app_state.clone())
+            .wrap(middleware::Logger::default())
             .configure(controllers::init)
     })
     .bind("0.0.0.0:8080")?

@@ -18,6 +18,10 @@ urlencoding = "2.1"
 backtrace = "0.3.75"
 calamine = "0.26.1"
 glob = "0.3.2"
+moka = { version = "0.12.10", features = ["future"] }
+async-trait = "0.1.88"
+tokio = "1.47.1"
+
 
 [profile.release]
 incremental = true
