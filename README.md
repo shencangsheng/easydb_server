@@ -14,7 +14,7 @@ EasyDB 是一个由 Rust 编写的 SQL 助手，旨在简化文本文件查询�
 - 支持 CSV 文件
 - 支持 NdJson 文件
 - 支持 TSV 文件
-- 支持 xlsx 文件 - **beta**
+- （**beta**）支持 xlsx 文件
 - 使用标准 SQL 语句对文件数据进行查询
 
 ## 🔮 路线
