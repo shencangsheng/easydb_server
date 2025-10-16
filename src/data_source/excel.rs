@@ -45,7 +45,7 @@ pub fn from_file_to_record_batch(file_path: &str) -> Result<RecordBatch, Excepti
                 records.push(Vec::new());
             }
         }
-        
+
         for row in r.rows().skip(1) {
             row.iter().enumerate().for_each(|(i, cell)| {
                 records.get_mut(i).unwrap().push(cell.clone());

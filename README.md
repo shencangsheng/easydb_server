@@ -9,6 +9,21 @@ EasyDB 是一个由 Rust 编写的 SQL 助手，旨在简化文本文件查询�
 
 底层采用了由 Rust 编写的高性能可扩展查询引擎 `DataFusion`。
 
+## 📖 项目背景
+
+### 从 Server 到 App
+
+[EasyDB Server](https://github.com/shencangsheng/easy_db) 主要部署于 Linux 服务器，作为 Web 服务支持大规模文本文件的高效查询。尽管已提供 Docker 部署方案，但在 macOS 上的使用仍不够便捷。
+
+为此，我开发了 [EasyDB App](https://github.com/shencangsheng/easydb_app) 客户端，专门为 macOS 和 Windows 平台优化，改善个人用户的本地使用体验。
+
+### 项目命名
+
+为了更好地区分两个项目：
+
+- **EasyDB Server**: 服务器端版本，基于 DataFusion
+- **EasyDB App**: 桌面客户端版本，基于 Polars
+
 ## 📖 功能
 
 - 支持 CSV 文件
